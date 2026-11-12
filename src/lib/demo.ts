@@ -4,9 +4,9 @@ import { db, schema } from "@/db";
 import { addDays, todayISO } from "./dates";
 
 /**
- * Datos de prueba: 11 vacunos con caravanas UY 9000…, sanidad en los tres estados
- * y una jornada de manga empezada. Todo se reconoce por la caravana UY9000, el RFID
- * 85800009… o el nombre "La Pinta (prueba)", y se borra solo eso.
+ * Datos de prueba de las seis especies: vacunos (UY9000…), ovinos (UY9100…), cabras (UY9200…),
+ * chanchos (UY9300…), y caballos, lotes y aves con nombre terminado en "(prueba)".
+ * Sanidad en los tres estados y jornadas empezadas. Se reconoce todo por eso y se borra solo eso.
  */
 
 const PREFIX_VISUAL = "UY9000";
@@ -54,9 +54,156 @@ function isDemo() {
     like(schema.animals.tagVisual, `${PREFIX_VISUAL}%`),
     like(schema.animals.tagVisual, `${PREFIX_SHEEP}%`),
     like(schema.animals.tagRfid, `${PREFIX_RFID}%`),
-    eq(schema.animals.name, DEMO_NAME),
-    eq(schema.animals.name, LOT_NAME),
+    like(schema.animals.tagVisual, `${PREFIX_GOAT}%`),
+    like(schema.animals.tagVisual, `${PREFIX_PIG}%`),
+    like(schema.animals.name, "%(prueba)"),
   );
+}
+
+/** Cabras y chanchos con caravana UY9200… / UY9300…; caballos, lotes y aves por nombre "(prueba)". */
+const PREFIX_GOAT = "UY9200";
+const PREFIX_PIG = "UY9300";
+
+type Extra = {
+  species: string;
+  category: string;
+  sex: string;
+  name?: string;
+  tag?: string;
+  lot?: number;
+  breed: string;
+  birth: string;
+  origin?: "nacido" | "comprado";
+  from?: string;
+  paddock?: number;
+};
+
+function extras(today: string): Extra[] {
+  const y = Number(today.slice(0, 4));
+  const goats: Extra[] = Array.from({ length: 8 }, (_, i) => ({
+    species: "caprino",
+    category: i < 6 ? "cabra" : i === 6 ? "chivo" : "cabrita",
+    sex: i < 6 || i === 7 ? "hembra" : "macho",
+    tag: `${PREFIX_GOAT}${String(i + 1).padStart(4, "0")}`,
+    breed: i % 3 === 0 ? "Anglo Nubian" : "Saanen",
+    birth: `${y - 2 - (i % 3)}-0${(i % 4) + 6}-1${i}`,
+    paddock: 2,
+  }));
+  const sows: Extra[] = Array.from({ length: 4 }, (_, i) => ({
+    species: "porcino",
+    category: "cerda",
+    sex: "hembra",
+    tag: `${PREFIX_PIG}${String(i + 1).padStart(4, "0")}`,
+    breed: i < 2 ? "Pampa Rocha" : "Large White",
+    birth: `${y - 2}-0${i + 3}-15`,
+  }));
+  return [
+    { species: "caballo", category: "caballo", sex: "castrado", name: "Moro (prueba)", breed: "Criollo", birth: `${y - 12}-10-01`, paddock: 1 },
+    { species: "caballo", category: "caballo", sex: "castrado", name: "Zaino (prueba)", breed: "Criollo", birth: `${y - 9}-09-15`, paddock: 1 },
+    { species: "caballo", category: "yegua", sex: "hembra", name: "Tordilla (prueba)", breed: "Criollo", birth: `${y - 7}-11-20`, paddock: 1 },
+    { species: "caballo", category: "yegua", sex: "hembra", name: "Picaza (prueba)", breed: "Cuarto de Milla", birth: `${y - 6}-10-05`, origin: "comprado", from: "Haras Prueba", paddock: 1 },
+    { species: "caballo", category: "padrillo", sex: "macho", name: "Lucero (prueba)", breed: "Criollo", birth: `${y - 8}-10-10`, origin: "comprado", from: "Cabaña Prueba", paddock: 1 },
+    { species: "caballo", category: "potrillo", sex: "macho", name: "Chispa (prueba)", breed: "Criollo", birth: addDays(today, -50), paddock: 1 },
+    ...goats,
+    { species: "caprino", category: "cabrito", sex: "macho", name: "Cabritos (prueba)", lot: 9, breed: "Saanen", birth: addDays(today, -40), paddock: 2 },
+    ...sows,
+    { species: "porcino", category: "padrillo", sex: "macho", tag: `${PREFIX_PIG}0005`, breed: "Duroc", birth: `${y - 3}-05-02`, origin: "comprado", from: "Criadero Prueba" },
+    { species: "porcino", category: "lechon", sex: "macho", name: "Lechones (prueba)", lot: 22, breed: "Cruza", birth: addDays(today, -25) },
+    { species: "porcino", category: "capon", sex: "castrado", name: "Capones engorde (prueba)", lot: 10, breed: "Cruza", birth: addDays(today, -150) },
+    { species: "ave", category: "gallina", sex: "hembra", name: "Ponedoras (prueba)", lot: 120, breed: "Rhode Island Red", birth: addDays(today, -300), origin: "comprado", from: "Granja Prueba" },
+    { species: "ave", category: "pollo", sex: "macho", name: "Parrilleros (prueba)", lot: 200, breed: "Cobb", birth: addDays(today, -28), origin: "comprado", from: "Granja Prueba" },
+    { species: "ave", category: "gallo", sex: "macho", name: "Gallos (prueba)", lot: 4, breed: "Campera", birth: addDays(today, -500) },
+  ];
+}
+
+const EXTRA_SPECIES: { key: string; orientations: string[] }[] = [
+  { key: "caballo", orientations: ["trabajo"] },
+  { key: "caprino", orientations: ["leche"] },
+  { key: "porcino", orientations: ["ciclo_completo"] },
+  { key: "ave", orientations: ["ponedoras"] },
+];
+
+/** Carga los caballos, cabras, chanchos y aves de prueba de las especies que todavía no tienen. */
+async function loadExtras(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], farmId: string, userId: string, today: string) {
+  for (const sp of EXTRA_SPECIES) {
+    await tx
+      .insert(schema.farmSpecies)
+      .values({ farmId, speciesKey: sp.key, active: true, orientations: sp.orientations, sells: 1 })
+      .onConflictDoUpdate({ target: [schema.farmSpecies.farmId, schema.farmSpecies.speciesKey], set: { active: true, updatedAt: new Date() } });
+  }
+  const present = await tx
+    .selectDistinct({ species: schema.animals.species })
+    .from(schema.animals)
+    .where(and(eq(schema.animals.farmId, farmId), isDemo(), inArray(schema.animals.species, EXTRA_SPECIES.map((s) => s.key))));
+  const skip = new Set(present.map((p) => p.species));
+  const list = extras(today).filter((a) => !skip.has(a.species));
+  if (!list.length) return 0;
+
+  const paddocks = await tx
+    .select({ id: schema.paddocks.id, name: schema.paddocks.name })
+    .from(schema.paddocks)
+    .where(and(eq(schema.paddocks.farmId, farmId), inArray(schema.paddocks.name, DEMO_PADDOCKS.map((p) => p.name))));
+  const paddockId = (i?: number) => (i === undefined ? null : (paddocks.find((p) => p.name === DEMO_PADDOCKS[i].name)?.id ?? null));
+
+  const rows = await tx
+    .insert(schema.animals)
+    .values(
+      list.map((a) => ({
+        farmId,
+        species: a.species,
+        category: a.category,
+        sex: a.sex,
+        name: a.name ?? null,
+        tagVisual: a.tag ?? null,
+        isLot: Boolean(a.lot),
+        headCount: a.lot ?? 1,
+        breed: a.breed,
+        birthDate: a.birth,
+        origin: a.origin ?? "nacido",
+        originDetail: a.from ?? null,
+        arrivedOn: a.origin === "comprado" ? addDays(today, -200) : null,
+        paddockId: paddockId(a.paddock),
+        createdBy: userId,
+      })),
+    )
+    .returning({ id: schema.animals.id, species: schema.animals.species, category: schema.animals.category, paddockId: schema.animals.paddockId });
+
+  const placed = rows.filter((r) => r.paddockId);
+  if (placed.length) {
+    const batchId = crypto.randomUUID();
+    await tx.insert(schema.movements).values(placed.map((r) => ({ farmId, animalId: r.id, toPaddockId: r.paddockId, date: addDays(today, -15), batchId, createdBy: userId })));
+  }
+
+  const ev = (animalId: string, control: string, label: string, daysAgo: number, extra: Partial<typeof schema.healthEvents.$inferInsert> = {}) => ({
+    farmId,
+    animalId,
+    control,
+    label,
+    date: addDays(today, -daysAgo),
+    createdBy: userId,
+    ...extra,
+  });
+  const of = (species: string, cats?: string[]) => rows.filter((r) => r.species === species && (!cats || cats.includes(r.category ?? "")));
+  const events = [
+    // Caballos: AIE vencida en uno, por vencer en otro; herraje al día; influenza pronto.
+    ...of("caballo", ["caballo", "yegua", "padrillo"]).map((h, i) =>
+      ev(h.id, "aie", "Certificado anemia infecciosa", i === 0 ? 380 : i === 1 ? 357 : 200, { vet: "Dr. Prueba", result: "negativo", nextDueDate: addDays(today, i === 0 ? -15 : i === 1 ? 8 : 165) }),
+    ),
+    ...of("caballo", ["caballo", "yegua", "padrillo"]).map((h) => ev(h.id, "herraje", "Herraje o desvasado", 30, { nextDueDate: addDays(today, 15) })),
+    ...of("caballo").map((h) => ev(h.id, "vacuna_influenza", "Vacuna influenza", 170, { product: "Influenza Prueba", nextDueDate: addDays(today, 10) })),
+    // Cabras: clostridial al día, desparasitación vencida.
+    ...of("caprino").map((g) => ev(g.id, "vacuna_clostridial", "Vacuna clostridial", 90, { product: "Clostridial Prueba", nextDueDate: addDays(today, 275) })),
+    ...of("caprino", ["cabra", "chivo", "cabrita"]).map((g) => ev(g.id, "desparasitacion", "Desparasitación", 100, { product: "Antiparasitario Prueba", nextDueDate: addDays(today, -10) })),
+    ...of("caprino", ["cabra"]).map((g, i) => ev(g.id, "ecografia", "Ecografía", 40, { vet: "Dr. Prueba", result: i === 0 ? "mellizos" : i === 5 ? "vacía" : "preñada" })),
+    // Chanchos: servicio a las cerdas, desparasitación por vencer, pesada de capones.
+    ...of("porcino", ["cerda"]).map((p) => ev(p.id, "servicio", "Servicio", 70, { product: "Padrillo Duroc" })),
+    ...of("porcino").map((p) => ev(p.id, "desparasitacion", "Desparasitación", 85, { product: "Antiparasitario Prueba", nextDueDate: addDays(today, 5) })),
+    ...of("porcino", ["capon"]).map((p) => ev(p.id, "pesada", "Pesada", 7, { result: "78" })),
+    // Aves: Newcastle por vencer en ponedoras, al día en el resto.
+    ...of("ave").map((b) => ev(b.id, "vacuna_newcastle", "Vacuna Newcastle", b.category === "gallina" ? 85 : 20, { product: "Newcastle Prueba", nextDueDate: addDays(today, b.category === "gallina" ? 5 : 70) })),
+  ];
+  if (events.length) await tx.insert(schema.healthEvents).values(events);
+  return rows.length;
 }
 
 /** Mapa de prueba: cuatro potreros dibujados a mano. viewBox propio para reconocerlo al borrar. */
@@ -93,8 +240,14 @@ export async function loadDemo(farmId: string, userId: string) {
       .values({ farmId, speciesKey: "ovino", active: true, orientations: ["lana", "cria"], sells: 1 })
       .onConflictDoUpdate({ target: [schema.farmSpecies.farmId, schema.farmSpecies.speciesKey], set: { active: true, updatedAt: new Date() } });
 
-    const existing = await tx.select({ id: schema.animals.id }).from(schema.animals).where(and(eq(schema.animals.farmId, farmId), isDemo()));
-    if (existing.length) return { created: 0, already: true };
+    const existing = await tx
+      .select({ id: schema.animals.id })
+      .from(schema.animals)
+      .where(and(eq(schema.animals.farmId, farmId), isDemo(), inArray(schema.animals.species, ["vacuno", "ovino"])));
+    if (existing.length) {
+      const added = await loadExtras(tx, farmId, userId, today);
+      return { created: added, already: added === 0 };
+    }
 
     // Potreros de prueba (si ya existen con ese nombre, se reusan).
     const paddockIds: string[] = [];
@@ -293,7 +446,8 @@ export async function loadDemo(farmId: string, userId: string) {
         createdBy: userId,
       })),
     );
-    return { created: rows.length + sheep.length + 1, already: false };
+    const added = await loadExtras(tx, farmId, userId, today);
+    return { created: rows.length + sheep.length + 1 + added, already: false };
   });
 }
 

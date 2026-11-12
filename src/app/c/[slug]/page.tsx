@@ -37,7 +37,7 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
       </header>
 
       {now ? (
-        <Link href={`/c/${slug}/clima`} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+        <Link href={`/c/${slug}/clima?desde=inicio`} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
           <span className="flex flex-col">
             <span className="text-[15px] font-semibold">{now.label}</span>
             <span className="text-[13px] text-muted">

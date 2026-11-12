@@ -310,7 +310,7 @@ export async function loadDemoData(_prev: ActionState, formData: FormData): Prom
   revalidatePath(`/c/${access.farm.slug}`, "layout");
   return result.already
     ? { error: "Los datos de prueba ya están cargados. Borralos primero si querés cargarlos de nuevo." }
-    : { ok: `Listo: ${result.created} animales de prueba (vacunos, ovinos y un lote de corderos), potreros con mapa, sanidad, lluvias y dos jornadas abiertas (aftosa y esquila).`, at: Date.now() };
+    : { ok: `Listo: ${result.created} registros de prueba (vacunos, ovinos, caballos, cabras, chanchos y aves, con lotes), potreros con mapa, sanidad, lluvias y dos jornadas abiertas (aftosa y esquila).`, at: Date.now() };
 }
 
 export async function clearDemoData(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -318,7 +318,7 @@ export async function clearDemoData(_prev: ActionState, formData: FormData): Pro
   if (denied) return { error: "Solo un dueño puede borrar datos de prueba." };
   const removed = await clearDemo(access.farm.id);
   revalidatePath(`/c/${access.farm.slug}`, "layout");
-  return { ok: removed ? `Se borraron ${removed} animales de prueba y su sanidad.` : "No había datos de prueba.", at: Date.now() };
+  return { ok: removed ? `Se borraron ${removed} registros de prueba y su sanidad.` : "No había datos de prueba.", at: Date.now() };
 }
 
 /** Oculta "Para empezar" en el Inicio de este campo (queda todo en Más). */

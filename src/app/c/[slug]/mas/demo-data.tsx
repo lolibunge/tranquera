@@ -13,7 +13,7 @@ export function DemoData({ slug, hasDemo }: { slug: string; hasDemo: boolean }) 
     <Card className="flex flex-col gap-3">
       <p className="text-base font-semibold">Datos de prueba</p>
       <p className="text-sm leading-snug text-ink-2">
-        11 vacunos (UY 9000…), 20 ovinos (UY 9100…) y un lote de 15 corderos, 4 potreros con mapa, sanidad vencida, por vencer y al día, ecografías, pesadas, esquila del año pasado, lluvias, y una jornada de aftosa y otra de esquila empezadas. Borrar quita solo eso.
+        11 vacunos, 20 ovinos con lote de corderos, 6 caballos, cabras, chanchos y aves (por lotes), 4 potreros con mapa, sanidad vencida, por vencer y al día, ecografías, pesadas, esquila del año pasado, lluvias, y una jornada de aftosa y otra de esquila empezadas. Borrar quita solo eso.
       </p>
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
       {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}

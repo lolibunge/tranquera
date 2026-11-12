@@ -43,6 +43,13 @@
       "when": 1794502110480,
       "tag": "0005_resultado",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794509887063,
+      "tag": "0006_etapa3",
+      "breakpoints": true
     }
   ]
 }

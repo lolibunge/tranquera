@@ -10,13 +10,14 @@ import { WeatherForm } from "./form";
 
 export const metadata: Metadata = { title: "Clima y lluvias" };
 
-export default async function WeatherPage({ params }: PageProps<"/c/[slug]/clima">) {
+export default async function WeatherPage({ params, searchParams }: PageProps<"/c/[slug]/clima">) {
   const { slug } = await params;
+  const fromHome = (await searchParams).desde === "inicio";
   const { farm, role } = await getFarmAccess(slug);
   const [forecast, logs, totals] = await Promise.all([getForecast(farm.latitude, farm.longitude), weatherLogs(farm.id), rainTotals(farm.id)]);
   return (
     <div className="flex flex-col gap-5">
-      <BackLink href={`/c/${slug}/mas`} label="Volver" />
+      <BackLink href={fromHome ? `/c/${slug}` : `/c/${slug}/mas`} label="Volver" />
       <PageTitle>Clima y lluvias</PageTitle>
 
       <section className="flex flex-col gap-3">

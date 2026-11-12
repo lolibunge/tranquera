@@ -117,6 +117,7 @@ export const farms = pgTable(
     logo: text("logo"),
     colorPrimary: text("color_principal").notNull().default("#7a4a2a"),
     colorAccent: text("color_acento").notNull().default("#c9733d"),
+    setupDoneAt: timestamp("asistente_completo", { withTimezone: true }),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
   },
@@ -216,6 +217,7 @@ export const animals = pgTable(
     statusCause: text("estado_causa"),
     paddockId: uuid("potrero_id").references((): AnyPgColumn => paddocks.id, { onDelete: "set null" }),
     saleId: uuid("venta_id").references((): AnyPgColumn => sales.id, { onDelete: "set null" }),
+    ownerId: uuid("propietario_id").references((): AnyPgColumn => owners.id, { onDelete: "set null" }),
     clientId: uuid("client_id"),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
@@ -385,6 +387,7 @@ export const sales = pgTable(
     gross: numeric("bruto", { precision: 14, scale: 2 }).notNull(),
     expenses: numeric("gastos", { precision: 14, scale: 2 }).notNull().default("0"),
     notes: text("notas"),
+    ownerId: uuid("propietario_id").references((): AnyPgColumn => owners.id, { onDelete: "set null" }),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
   },
@@ -407,6 +410,125 @@ export const weatherLogs = pgTable(
     ...timestamps,
   },
   (t) => [uniqueIndex("clima_dia_unq").on(t.farmId, t.date)],
+);
+
+/** Insumos: alimento, sales, semillas, fertilizantes, medicamentos… */
+export const supplies = pgTable(
+  "insumos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    name: text("nombre").notNull(),
+    category: text("categoria").notNull(), // alimento | sales | semillas | fertilizantes | medicamentos | combustible | otros
+    unit: text("unidad").notNull(), // kg, l, dosis, bolsa, fardo, unidad
+    minimum: doublePrecision("minimo"),
+    notes: text("notas"),
+    active: boolean("activo").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("insumos_nombre_unq").on(t.farmId, t.name)],
+);
+
+/** Movimientos de stock: entradas (compras) positivas, consumos negativos. */
+export const supplyMoves = pgTable(
+  "insumos_movimientos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    supplyId: uuid("insumo_id")
+      .notNull()
+      .references(() => supplies.id, { onDelete: "cascade" }),
+    date: date("fecha").notNull(),
+    quantity: doublePrecision("cantidad").notNull(),
+    unitCost: numeric("costo_unitario", { precision: 14, scale: 4 }),
+    currency: text("moneda"),
+    note: text("nota"),
+    sessionId: uuid("jornada_id").references(() => healthSessions.id, { onDelete: "set null" }),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("insumos_mov_idx").on(t.supplyId, t.date)],
+);
+
+/**
+ * Propietarios de animales: el campo, socios, terceros (pensión) o un pozo común
+ * entre socios (con el porcentaje de cada uno en owner_shares).
+ */
+export const owners = pgTable(
+  "propietarios",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    name: text("nombre").notNull(),
+    kind: text("tipo").notNull(), // campo | socio | tercero | pozo
+    phone: text("telefono"),
+    monthlyFee: numeric("pension_mensual", { precision: 12, scale: 2 }),
+    currency: text("moneda").notNull().default("USD"),
+    notes: text("notas"),
+    active: boolean("activo").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("propietarios_nombre_unq").on(t.farmId, t.name)],
+);
+
+export const ownerShares = pgTable(
+  "pozo_partes",
+  {
+    poolId: uuid("pozo_id")
+      .notNull()
+      .references(() => owners.id, { onDelete: "cascade" }),
+    partnerId: uuid("socio_id")
+      .notNull()
+      .references(() => owners.id, { onDelete: "cascade" }),
+    percent: doublePrecision("porcentaje").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.poolId, t.partnerId] })],
+);
+
+/** Gastos del campo, con categoría y a quién se imputan (opcional). */
+export const expenses = pgTable(
+  "gastos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    date: date("fecha").notNull(),
+    concept: text("concepto").notNull(),
+    category: text("categoria").notNull(),
+    amount: numeric("monto", { precision: 14, scale: 2 }).notNull(),
+    currency: text("moneda").notNull().default("USD"),
+    ownerId: uuid("propietario_id").references(() => owners.id, { onDelete: "set null" }),
+    supplier: text("proveedor"),
+    notes: text("notas"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("gastos_campo_idx").on(t.farmId, t.date)],
+);
+
+/** Tareas y recordatorios que se cargan a mano en el calendario. */
+export const tasks = pgTable(
+  "tareas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    date: date("fecha").notNull(),
+    title: text("titulo").notNull(),
+    notes: text("notas"),
+    doneAt: timestamp("hecha", { withTimezone: true }),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("tareas_campo_idx").on(t.farmId, t.date)],
 );
 
 export type Paddock = typeof paddocks.$inferSelect;
