@@ -6,21 +6,27 @@ import { db, schema } from "@/db";
 import { getFarmAccess } from "@/lib/farms";
 import { listPaddocks, PADDOCK_KINDS } from "@/lib/paddocks";
 import { CATALOG, categoryOf, formatTag, isSpeciesKey } from "@/lib/catalogo";
-import { formatDate } from "@/lib/dates";
+import { formatDate, todayISO } from "@/lib/dates";
 import { can } from "@/lib/roles";
 import { BackLink, ButtonLink, Card, SectionTitle } from "@/components/ui";
 import { PaddockForm } from "../paddock-form";
-import { archivePaddockAction } from "../actions";
+import { archivePaddockAction, deleteReadingAction, deleteWorkAction } from "../actions";
+import { ReadingForm, WorkForm } from "../pasture-forms";
+import { paddockReadings, paddockWorks, WORK_KINDS, workLabel } from "@/lib/pasture";
 
 export const metadata: Metadata = { title: "Potrero" };
 
 export default async function PaddockPage({ params }: PageProps<"/c/[slug]/potreros/[id]">) {
   const { slug, id } = await params;
   const { farm, role } = await getFarmAccess(slug);
-  const p = (await listPaddocks(farm.id)).find((x) => x.id === id);
+  const all = await listPaddocks(farm.id);
+  const p = all.find((x) => x.id === id);
+  const today = todayISO();
   if (!p) notFound();
 
-  const [animals, history] = await Promise.all([
+  const [works, readings, animals, history] = await Promise.all([
+    paddockWorks(farm.id, id),
+    paddockReadings(farm.id, id),
     db
       .select({
         id: schema.animals.id,
@@ -60,6 +66,22 @@ export default async function PaddockPage({ params }: PageProps<"/c/[slug]/potre
             .filter(Boolean)
             .join(" · ") || "Sin datos de superficie"}
         </p>
+        {p.parentName || p.zone ? (
+          <p className="text-[13px] text-muted">
+            {[p.parentName ? `Dentro de ${p.parentName}` : null, p.zone ? `Zona ${p.zone}` : null].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
+        {p.readyOn ? (
+          <p className="text-[15px] font-semibold text-warn-fg">
+            {workLabel(p.readyWork ?? "")}: pronto para pastorear el {formatDate(p.readyOn)}
+          </p>
+        ) : null}
+        {p.lastReading ? (
+          <p className="text-[15px]">
+            Pasto: <span className="font-semibold tabular-nums">{p.lastReading.kgDmHa.toLocaleString("es-UY")} kg MS/ha</span>
+            <span className="text-muted"> · {formatDate(p.lastReading.date)}</span>
+          </p>
+        ) : null}
         <p className="text-[15px] font-semibold">
           {p.heads > 0
             ? `${p.heads} cabezas${p.occupiedDays !== null ? ` · entraron hace ${p.occupiedDays} días` : ""}`
@@ -116,12 +138,95 @@ export default async function PaddockPage({ params }: PageProps<"/c/[slug]/potre
         </section>
       ) : null}
 
+      <section className="flex flex-col gap-3">
+        <SectionTitle>Laboreos</SectionTitle>
+        {works.length ? (
+          <ul className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+            {works.map((w) => (
+              <li key={w.id} className="flex items-center justify-between gap-3 border-b border-chip px-4 py-2.5 last:border-b-0">
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-[15px] font-semibold">{workLabel(w.kind)}</span>
+                  <span className="text-[13px] text-muted">
+                    {[formatDate(w.date), w.readyOn ? `pronto ${formatDate(w.readyOn)}` : null, w.doneBy, w.notes].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                {can(role, "cargar") ? (
+                  <form action={deleteWorkAction}>
+                    <input type="hidden" name="slug" value={slug} />
+                    <input type="hidden" name="id" value={w.id} />
+                    <button type="submit" aria-label="Borrar laboreo" className="flex size-9 items-center justify-center rounded-lg text-muted hover:bg-chip">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted">Sin laboreos registrados.</p>
+        )}
+        {can(role, "cargar") ? (
+          <details className="rounded-2xl border border-line bg-surface p-4">
+            <summary className="cursor-pointer text-[15px] font-semibold">Registrar laboreo</summary>
+            <div className="mt-4">
+              <WorkForm slug={slug} paddockId={p.id} today={today} kinds={WORK_KINDS} />
+            </div>
+          </details>
+        ) : null}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <SectionTitle>Mediciones de pasto</SectionTitle>
+        {readings.length ? (
+          <ul className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+            {readings.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 border-b border-chip px-4 py-2.5 last:border-b-0">
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-[15px] font-semibold tabular-nums">{r.kgDmHa.toLocaleString("es-UY")} kg MS/ha</span>
+                  <span className="text-[13px] text-muted">{[formatDate(r.date), r.notes].filter(Boolean).join(" · ")}</span>
+                </span>
+                {can(role, "cargar") ? (
+                  <form action={deleteReadingAction}>
+                    <input type="hidden" name="slug" value={slug} />
+                    <input type="hidden" name="id" value={r.id} />
+                    <button type="submit" aria-label="Borrar medición" className="flex size-9 items-center justify-center rounded-lg text-muted hover:bg-chip">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted">Sin mediciones.</p>
+        )}
+        {can(role, "cargar") ? (
+          <details className="rounded-2xl border border-line bg-surface p-4">
+            <summary className="cursor-pointer text-[15px] font-semibold">Medir el pasto</summary>
+            <div className="mt-4">
+              <ReadingForm slug={slug} paddockId={p.id} today={today} />
+            </div>
+          </details>
+        ) : null}
+      </section>
+
       {can(role, "configurar") ? (
         <Card className="flex flex-col gap-4">
           <SectionTitle>Datos del potrero</SectionTitle>
           <PaddockForm
             slug={slug}
-            initial={{ id: p.id, name: p.name, hectares: p.hectares?.toString() ?? "", kind: p.kind ?? "", notes: p.notes ?? "" }}
+            initial={{
+              id: p.id,
+              name: p.name,
+              hectares: p.hectares?.toString() ?? "",
+              kind: p.kind ?? "",
+              notes: p.notes ?? "",
+              parentId: p.parentId ?? "",
+              zone: p.zone ?? "",
+              restSince: p.restSince ?? "",
+            }}
+            parents={all.map((x) => ({ id: x.id, name: x.name }))}
+            today={today}
           />
           <form action={archivePaddockAction} className="border-t border-chip pt-4">
             <input type="hidden" name="slug" value={slug} />

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getFarmAccess } from "@/lib/farms";
 import { can, type Permission } from "@/lib/roles";
+import { deleteReading, deleteWork, recordReading, recordWork } from "@/lib/pasture";
 import { archivePaddock, archiveUnmapped, deleteMap, moveAnimals, nameShape, saveMap, savePaddock } from "@/lib/paddocks";
 
 export type PaddockState = { error?: string; ok?: string; at?: number };
@@ -20,7 +21,15 @@ export async function savePaddockAction(_prev: PaddockState, formData: FormData)
   const id = text(formData, "id") || undefined;
   const result = await savePaddock(
     access.farm.id,
-    { name: text(formData, "name"), hectares: text(formData, "hectares"), kind: text(formData, "kind"), notes: text(formData, "notes") },
+    {
+      name: text(formData, "name"),
+      hectares: text(formData, "hectares"),
+      kind: text(formData, "kind"),
+      notes: text(formData, "notes"),
+      parentId: formData.has("parentId") ? text(formData, "parentId") : undefined,
+      zone: formData.has("zone") ? text(formData, "zone") : undefined,
+      restSince: formData.has("restSince") ? text(formData, "restSince") : undefined,
+    },
     id,
   );
   if (!result.ok) return { error: result.error };
@@ -103,4 +112,53 @@ export async function archiveUnmappedAction(_prev: PaddockState, formData: FormD
       (r.withAnimals.length ? ` Quedan ${r.withAnimals.length} con animales (${r.withAnimals.join(", ")}): movelos y volvé a archivar.` : ""),
     at: Date.now(),
   };
+}
+
+export async function recordWorkAction(_prev: PaddockState, f: FormData): Promise<PaddockState> {
+  const access = await getFarmAccess(text(f, "slug"));
+  if (!can(access.role, "cargar")) return { error: "No tenés permiso para cargar laboreos." };
+  const result = await recordWork(access.farm.id, access.user.id, {
+    paddockId: text(f, "paddockId"),
+    kind: text(f, "kind"),
+    date: text(f, "date"),
+    readyOn: text(f, "readyOn"),
+    doneBy: text(f, "doneBy"),
+    notes: text(f, "notes"),
+  });
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+  return { ok: "Laboreo registrado.", at: Date.now() };
+}
+
+export async function recordReadingAction(_prev: PaddockState, f: FormData): Promise<PaddockState> {
+  const access = await getFarmAccess(text(f, "slug"));
+  if (!can(access.role, "cargar")) return { error: "No tenés permiso para cargar mediciones." };
+  const result = await recordReading(access.farm.id, access.user.id, {
+    paddockId: text(f, "paddockId"),
+    date: text(f, "date"),
+    direct: text(f, "direct"),
+    samples: text(f, "samples"),
+    areaM2: text(f, "areaM2"),
+    mode: text(f, "mode") === "seco" ? "seco" : "verde",
+    dmPct: text(f, "dmPct"),
+    height: text(f, "height"),
+    notes: text(f, "notes"),
+  });
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+  return { ok: `Medición guardada: ${result.value.kg.toLocaleString("es-UY")} kg MS/ha.`, at: Date.now() };
+}
+
+export async function deleteWorkAction(f: FormData) {
+  const access = await getFarmAccess(text(f, "slug"));
+  if (!can(access.role, "cargar")) return;
+  await deleteWork(access.farm.id, text(f, "id"));
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+}
+
+export async function deleteReadingAction(f: FormData) {
+  const access = await getFarmAccess(text(f, "slug"));
+  if (!can(access.role, "cargar")) return;
+  await deleteReading(access.farm.id, text(f, "id"));
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
 }

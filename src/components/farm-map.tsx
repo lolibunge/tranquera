@@ -23,8 +23,8 @@ export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: P
           const labeled = new Set<string>();
           return map.shapes.map((shape, i) => {
             const p = shape.name && !shape.background ? byName.get(shape.name.toLowerCase()) : undefined;
-            const fill = !p ? "var(--chip)" : p.heads > 0 ? "var(--brand)" : p.restDays !== null ? "#2e7d3e" : "#d6ccbf";
-            const opacity = !p ? 0.5 : p.heads > 0 ? 0.6 : p.restDays !== null ? 0.28 : 0.5;
+            const fill = !p ? "var(--chip)" : p.heads > 0 ? "var(--brand)" : p.readyOn ? "#c26a06" : p.restDays !== null ? "#2e7d3e" : "#d6ccbf";
+            const opacity = !p ? 0.5 : p.heads > 0 ? 0.6 : p.readyOn ? 0.3 : p.restDays !== null ? 0.28 : 0.5;
             const el = createElement(shape.tag, {
               ...shape.attrs,
               transform: shape.transform || undefined,
@@ -35,7 +35,7 @@ export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: P
               vectorEffect: "non-scaling-stroke",
             });
             if (!p) return <g key={i}>{el}</g>;
-            const status = p.heads > 0 ? `${p.heads} cabezas` : p.restDays !== null ? `descansa hace ${p.restDays} días` : "vacío";
+            const status = p.heads > 0 ? `${p.heads} cabezas` : p.readyOn ? `laboreo, pronto el ${p.readyOn.split("-").reverse().slice(0, 2).join("/")}` : p.restDays !== null ? `descansa hace ${p.restDays} días` : "vacío";
             // Un nombre por potrero (aunque tenga varias formas).
             const label = labeled.has(p.id) ? null : labelFor(shape, p.name, fontSize / zoom);
             if (label) labeled.add(p.id);
@@ -68,6 +68,11 @@ export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: P
         <span className="flex items-center gap-1.5">
           <span className="size-3 rounded-sm bg-ok-dot/30" aria-hidden="true" /> En descanso
         </span>
+        {paddocks.some((p) => p.readyOn) ? (
+          <span className="flex items-center gap-1.5">
+            <span className="size-3 rounded-sm bg-warn-dot/30" aria-hidden="true" /> Con laboreo
+          </span>
+        ) : null}
         <span className="flex items-center gap-1.5">
           <span className="size-3 rounded-sm bg-line-strong/60" aria-hidden="true" /> Sin datos
         </span>

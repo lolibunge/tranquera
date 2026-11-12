@@ -29,11 +29,20 @@ export type PaddockSummary = {
   restDays: number | null;
   /** Días desde que entraron los animales que están. */
   occupiedDays: number | null;
+  parentId: string | null;
+  parentName: string | null;
+  zone: string | null;
+  restSince: string | null;
+  /** Último laboreo que todavía no dejó pronto el potrero: hasta cuándo no se puede pastorear. */
+  readyOn: string | null;
+  readyWork: string | null;
+  /** Última medición de pasto. */
+  lastReading: { date: string; kgDmHa: number } | null;
 };
 
 export async function listPaddocks(farmId: string): Promise<PaddockSummary[]> {
   const today = todayISO();
-  const [rows, occupancy, lastOut, lastIn] = await Promise.all([
+  const [rows, occupancy, lastOut, lastIn, works, readings] = await Promise.all([
     db
       .select()
       .from(schema.paddocks)
@@ -58,6 +67,16 @@ export async function listPaddocks(farmId: string): Promise<PaddockSummary[]> {
       .from(schema.movements)
       .where(eq(schema.movements.farmId, farmId))
       .groupBy(schema.movements.toPaddockId),
+    db
+      .selectDistinctOn([schema.fieldWorks.paddockId], { paddockId: schema.fieldWorks.paddockId, readyOn: schema.fieldWorks.readyOn, kind: schema.fieldWorks.kind })
+      .from(schema.fieldWorks)
+      .where(and(eq(schema.fieldWorks.farmId, farmId), sql`${schema.fieldWorks.readyOn} > ${today}`))
+      .orderBy(schema.fieldWorks.paddockId, sql`${schema.fieldWorks.readyOn} desc`),
+    db
+      .selectDistinctOn([schema.pastureReadings.paddockId], { paddockId: schema.pastureReadings.paddockId, date: schema.pastureReadings.date, kgDmHa: schema.pastureReadings.kgDmHa })
+      .from(schema.pastureReadings)
+      .where(eq(schema.pastureReadings.farmId, farmId))
+      .orderBy(schema.pastureReadings.paddockId, sql`${schema.pastureReadings.date} desc`),
   ]);
 
   return rows.map((p) => {
@@ -65,6 +84,10 @@ export async function listPaddocks(farmId: string): Promise<PaddockSummary[]> {
     const heads = occ.reduce((n, o) => n + o.heads, 0);
     const out = lastOut.find((l) => l.paddockId === p.id)?.date ?? null;
     const into = lastIn.find((l) => l.paddockId === p.id)?.date ?? null;
+    // Descanso: desde la última salida, o desde la fecha marcada a mano si es más nueva.
+    const restStart = p.restSince && (!out || p.restSince > out) ? p.restSince : out;
+    const work = works.find((w) => w.paddockId === p.id);
+    const reading = readings.find((r) => r.paddockId === p.id);
     return {
       id: p.id,
       name: p.name,
@@ -75,8 +98,15 @@ export async function listPaddocks(farmId: string): Promise<PaddockSummary[]> {
       heads,
       bySpecies: Object.fromEntries(occ.map((o) => [o.species, o.heads])),
       load: p.hectares && heads ? Math.round((heads / p.hectares) * 100) / 100 : null,
-      restDays: heads === 0 && out ? Math.max(0, daysBetween(out, today)) : null,
+      restDays: heads === 0 && restStart ? Math.max(0, daysBetween(restStart, today)) : null,
       occupiedDays: heads > 0 && into ? Math.max(0, daysBetween(into, today)) : null,
+      parentId: p.parentId,
+      parentName: rows.find((r) => r.id === p.parentId)?.name ?? null,
+      zone: p.zone,
+      restSince: p.restSince,
+      readyOn: work?.readyOn ?? null,
+      readyWork: work?.kind ?? null,
+      lastReading: reading ? { date: reading.date, kgDmHa: reading.kgDmHa } : null,
     };
   });
 }
@@ -99,6 +129,17 @@ export const paddockInput = z.object({
     .transform((v) => (v === "" ? null : Number(v))),
   kind: z.string().trim().max(20).transform((v) => v || null),
   notes: z.string().trim().max(500).transform((v) => v || null),
+  parentId: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v || null))
+    .refine((v) => v === undefined || v === null || z.string().uuid().safeParse(v).success, "Elegí un potrero de la lista."),
+  zone: z.string().trim().max(40).optional().transform((v) => (v === undefined ? undefined : v || null)),
+  restSince: z
+    .string()
+    .optional()
+    .refine((v) => !v || (isISODate(v) && v <= todayISO()), "Revisá la fecha de descanso.")
+    .transform((v) => (v === undefined ? undefined : v || null)),
 });
 
 export async function savePaddock(farmId: string, raw: z.input<typeof paddockInput>, id?: string) {
@@ -110,6 +151,16 @@ export async function savePaddock(farmId: string, raw: z.input<typeof paddockInp
     .from(schema.paddocks)
     .where(and(eq(schema.paddocks.farmId, farmId), sql`lower(${schema.paddocks.name}) = lower(${d.name})`))
     .limit(1);
+  if (d.parentId && d.parentId === id) return { ok: false as const, error: "Un potrero no puede estar dentro de sí mismo." };
+  if (d.parentId) {
+    const [parent] = await db
+      .select({ id: schema.paddocks.id, parentId: schema.paddocks.parentId })
+      .from(schema.paddocks)
+      .where(and(eq(schema.paddocks.id, d.parentId), eq(schema.paddocks.farmId, farmId)))
+      .limit(1);
+    if (!parent) return { ok: false as const, error: "Elegí un potrero de la lista." };
+    if (id && parent.parentId === id) return { ok: false as const, error: "Ese potrero ya está dentro de este." };
+  }
   if (dup && dup.id !== id) {
     if (!dup.active && !id) {
       await db.update(schema.paddocks).set({ ...d, active: true, updatedAt: new Date() }).where(eq(schema.paddocks.id, dup.id));

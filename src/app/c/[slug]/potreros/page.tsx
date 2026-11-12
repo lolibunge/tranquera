@@ -6,6 +6,7 @@ import { CATALOG, isSpeciesKey } from "@/lib/catalogo";
 import { can } from "@/lib/roles";
 import { ButtonLink, Card, PageTitle, StatusPill } from "@/components/ui";
 import { FarmMapView } from "@/components/farm-map";
+import { formatDayMonth } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Potreros" };
 
@@ -88,6 +89,8 @@ export default async function PaddocksPage({ params, searchParams }: PageProps<"
                     </span>
                     {p.heads > 0 ? (
                       <StatusPill tone="info">{p.heads} cab.</StatusPill>
+                    ) : p.readyOn ? (
+                      <StatusPill tone="warn">Pronto {formatDayMonth(p.readyOn)}</StatusPill>
                     ) : p.restDays !== null ? (
                       <StatusPill tone="ok">Descansa {p.restDays} d</StatusPill>
                     ) : (
@@ -106,16 +109,20 @@ export default async function PaddocksPage({ params, searchParams }: PageProps<"
                       <span className="text-base font-semibold">{p.name}</span>
                       {p.heads > 0 ? (
                         <StatusPill tone="info">{p.heads} cab.</StatusPill>
+                      ) : p.readyOn ? (
+                        <StatusPill tone="warn">Pronto {formatDayMonth(p.readyOn)}</StatusPill>
                       ) : p.restDays !== null ? (
                         <StatusPill tone="ok">Descansa {p.restDays} d</StatusPill>
                       ) : (
                         <span className="text-xs text-muted">Vacío</span>
                       )}
                     </span>
-                    {[p.hectares, p.kind, p.load, p.occupiedDays].some((v) => v !== null && v !== undefined && v !== 0) ? (
+                    {[p.hectares, p.kind, p.load, p.occupiedDays, p.parentName, p.lastReading].some((v) => v !== null && v !== undefined && v !== 0) ? (
                       <span className="text-[13px] text-muted">
                         {[
+                          p.parentName ? `en ${p.parentName}` : null,
                           p.hectares ? `${p.hectares} ha` : null,
+                          p.lastReading ? `${p.lastReading.kgDmHa.toLocaleString("es-UY")} kg MS/ha` : null,
                           PADDOCK_KINDS.find((k) => k.value === p.kind)?.label,
                           p.load ? `${p.load} cab/ha` : null,
                           p.occupiedDays !== null ? `hace ${p.occupiedDays} días` : null,

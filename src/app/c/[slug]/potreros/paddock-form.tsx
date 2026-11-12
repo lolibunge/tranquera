@@ -14,7 +14,9 @@ const KINDS = [
   { value: "otro", label: "Otro" },
 ];
 
-export function PaddockForm({ slug, initial }: { slug: string; initial?: { id: string; name: string; hectares: string; kind: string; notes: string } }) {
+type Initial = { id: string; name: string; hectares: string; kind: string; notes: string; parentId?: string; zone?: string; restSince?: string };
+
+export function PaddockForm({ slug, initial, parents = [], today }: { slug: string; initial?: Initial; parents?: { id: string; name: string }[]; today?: string }) {
   const [state, action, pending] = useActionState<PaddockState, FormData>(savePaddockAction, {});
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -31,6 +33,32 @@ export function PaddockForm({ slug, initial }: { slug: string; initial?: { id: s
           ))}
         </SelectField>
       </div>
+      {parents.length ? (
+        <div className="grid grid-cols-2 gap-3">
+          <SelectField id="parentId" name="parentId" label="Está dentro de" defaultValue={initial?.parentId ?? ""}>
+            <option value="">Ninguno</option>
+            {parents
+              .filter((p) => p.id !== initial?.id)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+          </SelectField>
+          <Field id="zone" name="zone" label="Zona" defaultValue={initial?.zone} placeholder="Opcional" />
+        </div>
+      ) : null}
+      {initial ? (
+        <Field
+          id="restSince"
+          name="restSince"
+          type="date"
+          label="En descanso desde"
+          max={today}
+          defaultValue={initial.restSince}
+          hint="Opcional. Si no hay movimientos cargados, marcá desde cuándo está sin animales."
+        />
+      ) : null}
       <Field id="notes" name="notes" label="Notas" defaultValue={initial?.notes} placeholder="Aguada, sombra, estado de alambrados…" />
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
       {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}
