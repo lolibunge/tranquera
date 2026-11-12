@@ -7,13 +7,13 @@ import { BrandForm } from "./form";
 
 export const metadata: Metadata = { title: "Marca" };
 
-export default async function BrandPage({ params }: PageProps<"/c/[slug]/marca">) {
+export default async function BrandPage({ params, searchParams }: PageProps<"/c/[slug]/marca">) {
   const { slug } = await params;
   const { farm, role } = await getFarmAccess(slug);
   if (!can(role, "configurar")) notFound();
   return (
     <div className="flex flex-col gap-6">
-      <BackLink href={`/c/${slug}/mas`} />
+      <BackLink href={(await searchParams).desde === "inicio" ? `/c/${slug}` : `/c/${slug}/mas`} />
       <PageTitle sub="Así ve tu equipo el campo: el logo arriba y los colores en botones y pestañas.">Marca</PageTitle>
       <BrandForm slug={slug} name={farm.name} logo={farm.logo} primary={farm.colorPrimary} accent={farm.colorAccent} />
     </div>

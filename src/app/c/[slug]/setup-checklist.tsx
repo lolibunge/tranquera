@@ -26,9 +26,12 @@ export async function SetupChecklist({ slug, farm, hasSpecies }: { slug: string;
 
   const steps = [
     !hasSpecies && { href: `/c/${slug}/especies?desde=inicio`, label: "Elegir las especies del campo", main: true },
-    !farm.logo && farm.colorPrimary === DEFAULT_PRIMARY && farm.colorAccent === DEFAULT_ACCENT && { href: `/c/${slug}/marca`, label: "Poner logo y colores" },
-    members <= 1 && invites === 0 && { href: `/c/${slug}/usuarios`, label: "Invitar al equipo" },
-    farm.latitude === null && !farm.locationText && { href: `/c/${slug}/configuracion`, label: "Datos del campo" },
+    !farm.logo && {
+      href: `/c/${slug}/marca?desde=inicio`,
+      label: farm.colorPrimary === DEFAULT_PRIMARY && farm.colorAccent === DEFAULT_ACCENT ? "Poner logo y colores" : "Poner el logo",
+    },
+    members <= 1 && invites === 0 && { href: `/c/${slug}/usuarios?desde=inicio`, label: "Invitar al equipo" },
+    farm.latitude === null && !farm.locationText && { href: `/c/${slug}/configuracion?desde=inicio`, label: "Datos del campo" },
   ].filter(Boolean) as { href: string; label: string; main?: boolean }[];
 
   if (!steps.length) return null;

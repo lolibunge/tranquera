@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Equipo" };
 
 const DAY = new Intl.DateTimeFormat("es-UY", { day: "numeric", month: "long", timeZone: "America/Montevideo" });
 
-export default async function TeamPage({ params }: PageProps<"/c/[slug]/usuarios">) {
+export default async function TeamPage({ params, searchParams }: PageProps<"/c/[slug]/usuarios">) {
   const { slug } = await params;
   const { farm, role, user } = await getFarmAccess(slug);
   const manage = can(role, "usuarios");
@@ -43,7 +43,7 @@ export default async function TeamPage({ params }: PageProps<"/c/[slug]/usuarios
 
   return (
     <div className="flex flex-col gap-6">
-      <BackLink href={`/c/${slug}/mas`} />
+      <BackLink href={(await searchParams).desde === "inicio" ? `/c/${slug}` : `/c/${slug}/mas`} />
       <PageTitle sub={manage ? "Invitá a quienes trabajan en el campo y elegí qué puede hacer cada uno." : undefined}>Equipo</PageTitle>
 
       {manage ? (
