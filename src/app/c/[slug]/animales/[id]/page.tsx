@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFarmAccess } from "@/lib/farms";
 import { getAnimal } from "@/lib/animals";
-import { CATALOG, SEX_LABEL, categoryOf, controlOf, formatTag, isSpeciesKey, type Sex } from "@/lib/catalogo";
+import { CATALOG, SEX_LABEL, categoryOf, formatTag, isSpeciesKey, type Sex } from "@/lib/catalogo";
 import { controlsForAnimal, healthHistory } from "@/lib/health";
 import { animalMovements } from "@/lib/paddocks";
 import { DEATH_CAUSES } from "@/lib/sales";
@@ -141,7 +141,7 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
                   {h.result ? <span className="font-normal text-ink-2"> · {/^\d/.test(h.result) ? `${h.result} kg` : h.result}</span> : null}
                 </span>
                 <span className="text-[13px] text-muted">
-                  {[formatDate(h.date), h.product, h.batch ? (controlOf(a.species, h.control)?.batchLabel ? h.batch : `serie ${h.batch}`) : null, h.dose, h.vet, h.sessionId ? "jornada de manga" : null]
+                  {[formatDate(h.date), h.product, h.batch ? (info.controls.find((c) => c.key === h.control)?.batchLabel ? h.batch : `serie ${h.batch}`) : null, h.dose, h.vet, h.sessionId ? "jornada de manga" : null]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
