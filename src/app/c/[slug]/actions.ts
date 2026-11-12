@@ -10,6 +10,7 @@ import { appUrl, buttonMail, sendMail } from "@/lib/email";
 import { getFarmAccess } from "@/lib/farms";
 import { can, isRole, ROLE_LABEL, type Permission, type Role } from "@/lib/roles";
 import { contrastWithWhite } from "@/lib/color";
+import { CATALOG, SPECIES_KEYS } from "@/lib/catalogo";
 
 export type ActionState = { error?: string; ok?: string; link?: string; at?: number };
 
@@ -214,4 +215,27 @@ export async function revokeInvitation(_prev: ActionState, formData: FormData): 
     .where(and(eq(schema.invitations.id, id), eq(schema.invitations.farmId, access.farm.id), isNull(schema.invitations.acceptedAt)));
   revalidatePath(`/c/${access.farm.slug}/usuarios`);
   return { ok: "Invitación cancelada.", at: Date.now() };
+}
+
+export async function saveSpecies(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { access, denied } = await guard(formData, "configurar");
+  if (denied) return { error: denied };
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    for (const key of SPECIES_KEYS) {
+      const active = formData.get(`on_${key}`) === "on";
+      const valid = new Set(CATALOG[key].orientations.map((o) => o.key));
+      const orientations = formData.getAll(`or_${key}`).map(String).filter((o) => valid.has(o));
+      const sells = formData.get(`sells_${key}`) === "0" ? 0 : 1;
+      await tx
+        .insert(schema.farmSpecies)
+        .values({ farmId: access.farm.id, speciesKey: key, active, orientations, sells })
+        .onConflictDoUpdate({
+          target: [schema.farmSpecies.farmId, schema.farmSpecies.speciesKey],
+          set: active ? { active, orientations, sells, updatedAt: now } : { active, updatedAt: now },
+        });
+    }
+  });
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+  return { ok: "Especies guardadas.", at: Date.now() };
 }

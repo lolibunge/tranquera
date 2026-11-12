@@ -13,6 +13,7 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
   const base = `/c/${slug}`;
   const items = [
     can(role, "configurar") && { href: `${base}/configuracion`, label: "Datos del campo", sub: "Nombre, ubicación, hectáreas, DICOSE" },
+    can(role, "configurar") && { href: `${base}/especies`, label: "Especies del campo", sub: "Qué animales tenés y para qué" },
     can(role, "configurar") && { href: `${base}/marca`, label: "Marca", sub: "Logo y colores" },
     { href: `${base}/usuarios`, label: "Equipo", sub: can(role, "usuarios") ? "Invitar y manejar roles" : "Quiénes están en el campo" },
     { href: "/cuenta", label: "Mi cuenta", sub: user.email },

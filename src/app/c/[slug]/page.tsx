@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { getFarmAccess } from "@/lib/farms";
 import { can } from "@/lib/roles";
-import { ButtonLink, Card, FarmMark, SectionTitle } from "@/components/ui";
+import { getActiveSpecies } from "@/lib/farm-species";
+import { ButtonLink, FarmMark, SectionTitle } from "@/components/ui";
+import { AttendList } from "@/components/attend-list";
 
 export async function generateMetadata({ params }: PageProps<"/c/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -15,6 +17,8 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
   const { slug } = await params;
   const { farm, role } = await getFarmAccess(slug);
   const today = DATE.format(new Date());
+  const species = await getActiveSpecies(farm.id);
+  const hasSpecies = species.length > 0;
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center gap-3">
@@ -27,19 +31,16 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
 
       <section className="flex flex-col gap-3">
         <SectionTitle>Para atender</SectionTitle>
-        <Card className="flex flex-col gap-2">
-          <p className="text-base font-semibold">Todavía no hay nada pendiente</p>
-          <p className="text-sm leading-relaxed text-ink-2">
-            Acá van a aparecer los vencimientos de sanidad, las campañas oficiales y lo que haya que hacer en el campo,
-            a medida que se carguen los animales.
-          </p>
-        </Card>
+        <AttendList slug={slug} farmId={farm.id} activeSpecies={species.map((x) => x.key)} />
       </section>
 
       {can(role, "configurar") ? (
         <section className="flex flex-col gap-3">
           <SectionTitle>Para empezar</SectionTitle>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {!hasSpecies ? (
+              <ButtonLink href={`/c/${slug}/especies?desde=inicio`} className="sm:col-span-2">Elegir las especies del campo</ButtonLink>
+            ) : null}
             <ButtonLink href={`/c/${slug}/marca`} kind="secondary">Poner logo y colores</ButtonLink>
             <ButtonLink href={`/c/${slug}/usuarios`} kind="secondary">Invitar al equipo</ButtonLink>
             <ButtonLink href={`/c/${slug}/configuracion`} kind="secondary">Datos del campo</ButtonLink>

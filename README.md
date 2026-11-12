@@ -36,8 +36,17 @@ Sin `RESEND_API_KEY`, el enlace para entrar se muestra en pantalla en desarrollo
 
 ## Etapas
 
-- **Etapa 0 · Base** (esta): cuentas, campos, equipo y roles, datos del campo, marca, app instalable.
-- **Etapa 1 · Animales y Sanidad**, con carga sin señal.
+- **Etapa 0 · Base**: cuentas, campos, equipo y roles, datos del campo, marca, app instalable.
+- **Etapa 1 · Animales y Sanidad** (esta): especies del campo, padrón por especie, carga de varios por caravana, sanidad con vencimientos, campañas oficiales, jornada de manga que funciona sin señal.
 - **Etapa 2 · Potreros, Movimientos y Clima.**
 - **Etapa 3 · Stock, Calendario, Propietarios y asistente inicial.**
 - **Etapa 4 · Migración de La Hidalguía** desde campo-admin.
+
+## Sin señal
+
+- El service worker guarda las pantallas de cada campo (`/c/...`) a medida que se abren: sin señal se ve la última copia.
+- La jornada de manga busca las caravanas en el padrón que ya está en el celular y guarda cada registro en una cola local (IndexedDB, `src/lib/offline-queue.ts`). La cola se envía sola a `/api/sync` al volver la conexión; cada registro lleva un `client_id`, así un reintento no duplica.
+
+## Campañas oficiales
+
+Las fechas de campañas del MGAP (aftosa, DICOSE) están en la tabla `campanas_oficiales`. Cada año se agregan con una migración nueva (ver `drizzle/0002_campanas.sql`).

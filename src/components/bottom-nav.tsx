@@ -9,10 +9,10 @@ type Item = { href: string; label: string; icon: ReactNode; match: (path: string
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
 /**
- * Barra de abajo. En la etapa 0 solo hay Inicio y Más; los módulos que elija
- * cada campo (Animales, Sanidad, Potreros) se suman acá en las próximas etapas.
+ * Barra de abajo. Animales y Sanidad aparecen cuando el campo tiene alguna especie prendida;
+ * Potreros se suma en la etapa 2.
  */
-export function BottomNav({ slug }: { slug: string }) {
+export function BottomNav({ slug, hasAnimals }: { slug: string; hasAnimals: boolean }) {
   const path = usePathname();
   const base = `/c/${slug}`;
   const items: Item[] = [
@@ -26,10 +26,34 @@ export function BottomNav({ slug }: { slug: string }) {
         </svg>
       ),
     },
+    ...(hasAnimals
+      ? [
+          {
+            href: `${base}/animales`,
+            label: "Animales",
+            match: (p: string) => p.startsWith(`${base}/animales`),
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+                <path d="M4 6h16M4 12h16M4 18h10" />
+              </svg>
+            ),
+          },
+          {
+            href: `${base}/sanidad`,
+            label: "Sanidad",
+            match: (p: string) => p.startsWith(`${base}/sanidad`),
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+                <path d="M12 21s-7-4.5-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.5-9 9-9 9z" />
+              </svg>
+            ),
+          },
+        ]
+      : []),
     {
       href: `${base}/mas`,
       label: "Más",
-      match: (p) => p !== base,
+      match: (p) => p.startsWith(`${base}/mas`) || ["configuracion", "marca", "usuarios", "especies"].some((s) => p.startsWith(`${base}/${s}`)),
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
           <circle cx="5" cy="12" r="1.5" />

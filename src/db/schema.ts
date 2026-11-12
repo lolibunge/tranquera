@@ -5,6 +5,8 @@ import {
   text,
   timestamp,
   integer,
+  boolean,
+  date,
   doublePrecision,
   primaryKey,
   index,
@@ -149,11 +151,137 @@ export const farmSpecies = pgTable(
     speciesKey: text("especie").notNull(),
     orientations: text("orientaciones").array().notNull().default([]),
     sells: integer("vende").notNull().default(1),
+    // Apagar una especie la esconde; sus animales no se borran.
+    active: boolean("activa").notNull().default(true),
     ...timestamps,
   },
   (t) => [primaryKey({ columns: [t.farmId, t.speciesKey] })],
 );
 
+export const animalStatusEnum = pgEnum("estado_animal", ["activo", "vendido", "muerto", "baja"]);
+
+/**
+ * Padrón. Un registro es un animal o, en especies que lo permiten, un lote con N cabezas.
+ * client_id: lo genera el celular al cargar sin señal; evita duplicados al sincronizar.
+ */
+export const animals = pgTable(
+  "animales",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    species: text("especie").notNull(),
+    category: text("categoria"),
+    sex: text("sexo"),
+    name: text("nombre"),
+    tagVisual: text("caravana"),
+    tagRfid: text("rfid"),
+    birthDate: date("nacimiento"),
+    breed: text("raza"),
+    origin: text("origen"), // nacido | comprado
+    originDetail: text("origen_detalle"),
+    arrivedOn: date("ingreso"),
+    isLot: boolean("es_lote").notNull().default(false),
+    headCount: integer("cabezas").notNull().default(1),
+    notes: text("notas"),
+    status: animalStatusEnum("estado").notNull().default("activo"),
+    statusDate: date("estado_fecha"),
+    statusNote: text("estado_nota"),
+    clientId: uuid("client_id"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("animales_campo_especie_idx").on(t.farmId, t.species, t.status),
+    uniqueIndex("animales_client_unq").on(t.clientId),
+    index("animales_caravana_idx").on(t.farmId, t.tagVisual),
+    index("animales_rfid_idx").on(t.farmId, t.tagRfid),
+  ],
+);
+
+/** Jornada de manga: un control (ej. vacuna aftosa) aplicado a muchos animales seguidos. */
+export const healthSessions = pgTable(
+  "jornadas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    species: text("especie").notNull(),
+    control: text("control").notNull(),
+    label: text("titulo").notNull(),
+    product: text("producto"),
+    batch: text("serie"),
+    dose: text("dosis"),
+    date: date("fecha").notNull(),
+    nextDueDate: date("proxima"),
+    vet: text("veterinario"),
+    notes: text("notas"),
+    closedAt: timestamp("cerrada", { withTimezone: true }),
+    clientId: uuid("client_id"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("jornadas_campo_idx").on(t.farmId, t.date), uniqueIndex("jornadas_client_unq").on(t.clientId)],
+);
+
+/** Registro sanitario de un animal (o lote). Lleva su propia próxima fecha. */
+export const healthEvents = pgTable(
+  "sanidad",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    animalId: uuid("animal_id")
+      .notNull()
+      .references(() => animals.id, { onDelete: "cascade" }),
+    sessionId: uuid("jornada_id").references(() => healthSessions.id, { onDelete: "set null" }),
+    control: text("control").notNull(),
+    label: text("titulo").notNull(),
+    product: text("producto"),
+    batch: text("serie"),
+    dose: text("dosis"),
+    date: date("fecha").notNull(),
+    nextDueDate: date("proxima"),
+    vet: text("veterinario"),
+    notes: text("notas"),
+    clientId: uuid("client_id"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("sanidad_animal_idx").on(t.animalId, t.control, t.date),
+    index("sanidad_campo_proxima_idx").on(t.farmId, t.nextDueDate),
+    index("sanidad_jornada_idx").on(t.sessionId),
+    uniqueIndex("sanidad_client_unq").on(t.clientId),
+  ],
+);
+
+/**
+ * Campañas sanitarias oficiales (MGAP): son las mismas para todos los campos.
+ * Se cargan cada año con una migración; la app las muestra en "Para atender"
+ * a los campos que tienen esa especie prendida.
+ */
+export const officialCampaigns = pgTable(
+  "campanas_oficiales",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    species: text("especie").notNull(),
+    control: text("control").notNull(),
+    title: text("titulo").notNull(),
+    detail: text("detalle"),
+    startsOn: date("desde").notNull(),
+    endsOn: date("hasta").notNull(),
+    sourceUrl: text("fuente"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("campanas_fechas_idx").on(t.species, t.endsOn)],
+);
+
 export type Role = (typeof roleEnum.enumValues)[number];
 export type User = typeof users.$inferSelect;
 export type Farm = typeof farms.$inferSelect;
+export type Animal = typeof animals.$inferSelect;
+export type HealthEvent = typeof healthEvents.$inferSelect;

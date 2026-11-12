@@ -1,23 +1,48 @@
 /*
-  Service worker de Tranquera (etapa 0).
-  - Guarda la "cáscara" de la app (estilos, scripts) para que abra rápido.
-  - Si no hay señal y la página no está guardada, muestra /sin-senal.
-  La carga de datos sin conexión (cola que se sincroniza sola) llega en la etapa 1.
+  Service worker de Tranquera.
+  - Archivos estáticos (_next/static, íconos): primero la copia guardada.
+  - Pantallas de un campo (/c/...): primero la red; si no hay señal, la última
+    copia guardada. Así se puede abrir una jornada de manga sin señal.
+  - Lo que se carga sin señal va a una cola en IndexedDB (ver offline-queue.ts).
 */
-const VERSION = "tq-v1";
+const STATIC = "tq-static-v2";
+const PAGES = "tq-pages-v2";
 const OFFLINE_URL = "/sin-senal";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll([OFFLINE_URL, "/icon.svg"])));
+  event.waitUntil(caches.open(STATIC).then((cache) => cache.addAll([OFFLINE_URL, "/icon.svg"])));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))),
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== STATIC && k !== PAGES).map((k) => caches.delete(k)))),
   );
   self.clients.claim();
 });
+
+self.addEventListener("message", (event) => {
+  // Al salir de la cuenta se borran las pantallas guardadas (pueden tener datos del campo).
+  if (event.data && event.data.type === "clear-pages") event.waitUntil(caches.delete(PAGES));
+});
+
+function networkFirst(request) {
+  return fetch(request)
+    .then((response) => {
+      if (response.ok && response.type === "basic") {
+        const copy = response.clone();
+        caches.open(PAGES).then((cache) => cache.put(request, copy));
+      }
+      return response;
+    })
+    .catch(() =>
+      caches.match(request, { ignoreVary: true }).then((hit) => {
+        if (hit) return hit;
+        if (request.mode === "navigate") return caches.match(OFFLINE_URL);
+        return Response.error();
+      }),
+    );
+}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
@@ -25,7 +50,6 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Archivos estáticos con hash: primero la copia guardada.
   if (url.pathname.startsWith("/_next/static/") || url.pathname.endsWith(".svg")) {
     event.respondWith(
       caches.match(request).then(
@@ -33,7 +57,7 @@ self.addEventListener("fetch", (event) => {
           hit ||
           fetch(request).then((response) => {
             const copy = response.clone();
-            caches.open(VERSION).then((cache) => cache.put(request, copy));
+            caches.open(STATIC).then((cache) => cache.put(request, copy));
             return response;
           }),
       ),
@@ -41,7 +65,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Páginas: siempre la red (datos al día); sin señal, la pantalla de aviso.
+  if (url.pathname.startsWith("/c/")) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)));
   }

@@ -91,7 +91,7 @@ const DOT: Record<Tone, string> = {
 /** Estado con punto y texto: nunca solo color. */
 export function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${TONE[tone]}`}>
+    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${TONE[tone]}`}>
       <span className={`size-1.5 rounded-full ${DOT[tone]}`} aria-hidden="true" />
       {children}
     </span>

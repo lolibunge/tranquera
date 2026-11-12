@@ -14,7 +14,7 @@ async function main() {
     return;
   }
   // Para migrar conviene la conexión directa (sin pooler) si está disponible.
-  const sql = postgres(process.env.DATABASE_URL_UNPOOLED ?? url, { max: 1, prepare: false });
+  const sql = postgres(process.env.DATABASE_URL_UNPOOLED ?? url, { max: 1, prepare: false, onnotice: () => {} });
   try {
     await migrate(drizzle(sql), { migrationsFolder: "./drizzle" });
     console.log("[migrate] Base al día.");
