@@ -53,7 +53,12 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
       ) : null}
 
       <section className="flex flex-col gap-3">
-        <SectionTitle>Para atender</SectionTitle>
+        <div className="flex items-center justify-between">
+          <SectionTitle>Para atender</SectionTitle>
+          <Link href={`/c/${slug}/calendario?desde=inicio`} className="py-1 text-[15px] font-semibold text-brand">
+            Calendario
+          </Link>
+        </div>
         <AttendList slug={slug} farmId={farm.id} activeSpecies={species.map((x) => x.key)} />
       </section>
 
