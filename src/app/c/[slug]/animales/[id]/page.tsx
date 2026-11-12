@@ -31,11 +31,12 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
   if (!a || !isSpeciesKey(a.species)) notFound();
   const info = CATALOG[a.species];
   const today = todayISO();
-  const [controls, history, moves, paddock] = await Promise.all([
+  const [controls, history, moves, paddock, owner] = await Promise.all([
     controlsForAnimal(farm.id, a.id, a.species),
     healthHistory(farm.id, a.id),
     animalMovements(farm.id, a.id),
     a.paddockId ? db.select({ id: schema.paddocks.id, name: schema.paddocks.name }).from(schema.paddocks).where(eq(schema.paddocks.id, a.paddockId)).limit(1) : Promise.resolve([]),
+    a.ownerId ? db.select({ id: schema.owners.id, name: schema.owners.name }).from(schema.owners).where(eq(schema.owners.id, a.ownerId)).limit(1) : Promise.resolve([]),
   ]);
   const title = a.isLot ? a.name : a.tagVisual ? formatTag(a.tagVisual) : a.name ?? formatTag(a.tagRfid);
   const sub = [
@@ -69,6 +70,15 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
             <Link href={`/c/${slug}/potreros/${paddock[0].id}`} className="rounded-full bg-brand-soft px-2.5 py-1 text-[13px] font-semibold text-brand">
               {paddock[0].name}
             </Link>
+          ) : null}
+          {owner[0] ? (
+            can(role, "cuentas") ? (
+              <Link href={`/c/${slug}/propietarios/${owner[0].id}`} className="rounded-full bg-info-bg px-2.5 py-1 text-[13px] font-semibold text-info-fg">
+                De {owner[0].name}
+              </Link>
+            ) : (
+              <span className="rounded-full bg-info-bg px-2.5 py-1 text-[13px] font-semibold text-info-fg">De {owner[0].name}</span>
+            )
           ) : null}
           {a.origin ? <span className="rounded-full bg-chip px-2.5 py-1 text-[13px] font-semibold">{a.origin === "nacido" ? "Nació en el campo" : "Comprado"}</span> : null}
           {a.status !== "activo" ? (

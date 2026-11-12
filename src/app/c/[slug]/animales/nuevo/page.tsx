@@ -7,6 +7,7 @@ import { can } from "@/lib/roles";
 import { todayISO } from "@/lib/dates";
 import { paddockOptions } from "@/lib/paddocks";
 import { BackLink, PageTitle } from "@/components/ui";
+import { ownerOptions } from "@/lib/owners";
 import { AnimalForm } from "../animal-form";
 
 export const metadata: Metadata = { title: "Nuevo animal" };
@@ -28,6 +29,7 @@ export default async function NewAnimalPage({ params, searchParams }: PageProps<
       <AnimalForm
         slug={slug}
         today={todayISO()}
+        owners={can(role, "cuentas") ? await ownerOptions(farm.id) : []}
         speciesOptions={active}
         paddocks={await paddockOptions(farm.id)}
         initial={{

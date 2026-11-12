@@ -6,6 +6,7 @@ import { isSpeciesKey } from "@/lib/catalogo";
 import { can } from "@/lib/roles";
 import { todayISO } from "@/lib/dates";
 import { BackLink, PageTitle } from "@/components/ui";
+import { ownerOptions } from "@/lib/owners";
 import { AnimalForm } from "../../animal-form";
 
 export const metadata: Metadata = { title: "Editar animal" };
@@ -23,6 +24,7 @@ export default async function EditAnimalPage({ params }: PageProps<"/c/[slug]/an
       <AnimalForm
         slug={slug}
         today={todayISO()}
+        owners={can(role, "cuentas") ? await ownerOptions(farm.id) : []}
         initial={{
           id: a.id,
           species: a.species,
@@ -39,6 +41,7 @@ export default async function EditAnimalPage({ params }: PageProps<"/c/[slug]/an
           arrivedOn: a.arrivedOn ?? "",
           notes: a.notes ?? "",
           paddockId: a.paddockId ?? "",
+          ownerId: a.ownerId ?? "",
         }}
       />
     </div>

@@ -47,6 +47,8 @@ export const animalInput = z.object({
   notes: optionalText(1000),
   clientId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
   paddockId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
+  /** undefined: no se toca; null: sin asignar. */
+  ownerId: z.string().uuid().nullable().optional(),
 });
 export type AnimalInput = z.input<typeof animalInput>;
 
@@ -105,6 +107,14 @@ export async function prepareAnimal(farmId: string, raw: AnimalInput, editingId?
       .limit(1);
     if (!p) return { ok: false, error: "Elegí un potrero del campo." };
   }
+  if (d.ownerId) {
+    const [o] = await db
+      .select({ id: schema.owners.id })
+      .from(schema.owners)
+      .where(and(eq(schema.owners.id, d.ownerId), eq(schema.owners.farmId, farmId), eq(schema.owners.active, true)))
+      .limit(1);
+    if (!o) return { ok: false, error: "Elegí un propietario de la lista." };
+  }
 
   return {
     ok: true,
@@ -112,6 +122,7 @@ export async function prepareAnimal(farmId: string, raw: AnimalInput, editingId?
       farmId,
       species,
       paddockId: editingId ? undefined : d.paddockId,
+      ownerId: d.ownerId,
       isLot,
       headCount: isLot ? d.headCount : 1,
       category: category?.value ?? null,

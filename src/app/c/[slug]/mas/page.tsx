@@ -25,6 +25,8 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
     can(role, "configurar") && { href: `${base}/marca`, label: "Marca", sub: "Logo y colores" },
     { href: `${base}/calendario`, label: "Calendario", sub: "Vencimientos, campañas y tareas" },
     { href: `${base}/stock`, label: "Stock de insumos", sub: "Vacunas, ración, sales y lo que se use" },
+    can(role, "cuentas") && { href: `${base}/propietarios`, label: "Propietarios y resultados", sub: "Socios, pozo común, pensiones y resultado del año" },
+    can(role, "cuentas") && { href: `${base}/gastos`, label: "Gastos", sub: "Lo que se gasta, por mes y categoría" },
     { href: `${base}/ventas`, label: "Ventas", sub: "Tropas vendidas y resumen del año" },
     { href: `${base}/clima`, label: "Clima y lluvias", sub: "Pronóstico, lluvias y heladas" },
     { href: `${base}/usuarios`, label: "Equipo", sub: can(role, "usuarios") ? "Invitar y manejar roles" : "Quiénes están en el campo" },

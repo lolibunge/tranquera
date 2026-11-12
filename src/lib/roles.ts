@@ -23,11 +23,12 @@ export type Permission =
   | "usuarios" // invitar, cambiar roles, sacar
   | "dueños" // dar o quitar el rol de dueño
   | "cargar" // cargar datos del campo
-  | "sanidad"; // cargar sanidad
+  | "sanidad" // cargar sanidad
+  | "cuentas"; // propietarios, gastos y resultados
 
 const MATRIX: Record<Role, Permission[]> = {
-  dueno: ["configurar", "usuarios", "dueños", "cargar", "sanidad"],
-  encargado: ["configurar", "usuarios", "cargar", "sanidad"],
+  dueno: ["configurar", "usuarios", "dueños", "cargar", "sanidad", "cuentas"],
+  encargado: ["configurar", "usuarios", "cargar", "sanidad", "cuentas"],
   operario: ["cargar", "sanidad"],
   veterinario: ["sanidad"],
   lector: [],

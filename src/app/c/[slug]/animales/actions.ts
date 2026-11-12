@@ -36,10 +36,11 @@ function readAnimal(formData: FormData): AnimalInput {
     arrivedOn: text(formData, "arrivedOn"),
     notes: text(formData, "notes"),
     paddockId: text(formData, "paddockId") || null,
+    ownerId: formData.has("ownerId") ? text(formData, "ownerId") || null : undefined,
   };
 }
 
-const KEEP = ["species", "category", "breed", "origin", "originDetail", "arrivedOn", "isLot", "paddockId"];
+const KEEP = ["species", "category", "breed", "origin", "originDetail", "arrivedOn", "isLot", "paddockId", "ownerId"];
 
 export async function saveAnimal(_prev: AnimalFormState, formData: FormData): Promise<AnimalFormState> {
   const { access, denied } = await guard(formData, "cargar");

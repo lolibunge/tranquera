@@ -55,13 +55,13 @@ export function SelectField({
   ...props
 }: ComponentProps<"select"> & { label: string; id: string }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-semibold">
         {label}
       </label>
       <select
         id={id}
-        className="h-13 rounded-xl border border-line-strong bg-field px-3 text-base text-ink focus:border-brand"
+        className="h-13 w-full min-w-0 rounded-xl border border-line-strong bg-field px-3 text-base text-ink focus:border-brand"
         {...props}
       >
         {children}

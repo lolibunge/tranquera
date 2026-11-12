@@ -168,6 +168,49 @@ async function loadSupplies(tx: Tx, farmId: string, userId: string, today: strin
   }
 }
 
+/**
+ * Propietarios de prueba: un socio con las cabras, un tercero con los caballos en pensión y
+ * un pozo común (campo 60 % / socio 40 %) con los terneros. Más algunos gastos del mes.
+ */
+async function loadOwners(tx: Tx, farmId: string, userId: string, today: string) {
+  const make = async (name: string, kind: string, extra: { monthlyFee?: string } = {}) => {
+    const [row] = await tx.insert(schema.owners).values({ farmId, name, kind, ...extra }).onConflictDoNothing().returning({ id: schema.owners.id });
+    return row?.id ?? null;
+  };
+  const [hasFarm] = await tx
+    .select({ id: schema.owners.id })
+    .from(schema.owners)
+    .where(and(eq(schema.owners.farmId, farmId), eq(schema.owners.kind, "campo"), eq(schema.owners.active, true)))
+    .limit(1);
+  const farmOwner = hasFarm?.id ?? (await make("El campo (prueba)", "campo"));
+  const partner = await make("Socio Pérez (prueba)", "socio");
+  const boarder = await make("Pensión Rodríguez (prueba)", "tercero", { monthlyFee: "300.00" });
+  const pool = await make("Pozo terneros (prueba)", "pozo");
+  if (!partner || !boarder || !pool || !farmOwner) return; // ya estaban
+
+  await tx.insert(schema.ownerShares).values([
+    { poolId: pool, partnerId: farmOwner, percent: 60 },
+    { poolId: pool, partnerId: partner, percent: 40 },
+  ]);
+  const demo = await tx
+    .select({ id: schema.animals.id, species: schema.animals.species, category: schema.animals.category })
+    .from(schema.animals)
+    .where(and(eq(schema.animals.farmId, farmId), isDemo(), eq(schema.animals.status, "activo")));
+  const set = async (ids: string[], ownerId: string) => {
+    if (ids.length) await tx.update(schema.animals).set({ ownerId }).where(inArray(schema.animals.id, ids));
+  };
+  await set(demo.filter((a) => a.species === "caprino").map((a) => a.id), partner);
+  await set(demo.filter((a) => a.species === "caballo").map((a) => a.id), boarder);
+  await set(demo.filter((a) => a.species === "vacuno" && ["ternero", "ternera"].includes(a.category ?? "")).map((a) => a.id), pool);
+
+  await tx.insert(schema.expenses).values([
+    { farmId, date: addDays(today, -10), concept: "Sueldo peón (prueba)", category: "personal", amount: "850.00", currency: "USD", createdBy: userId },
+    { farmId, date: addDays(today, -8), concept: "Gasoil (prueba)", category: "combustible", amount: "9800.00", currency: "UYU", supplier: "Estación Prueba", createdBy: userId },
+    { farmId, date: addDays(today, -5), concept: "Ración terneros (prueba)", category: "alimentacion", amount: "420.00", currency: "USD", ownerId: pool, createdBy: userId },
+    { farmId, date: addDays(today, -3), concept: "Veterinario cabras (prueba)", category: "sanidad", amount: "120.00", currency: "USD", ownerId: partner, createdBy: userId },
+  ]);
+}
+
 const EXTRA_SPECIES: { key: string; orientations: string[] }[] = [
   { key: "caballo", orientations: ["trabajo"] },
   { key: "caprino", orientations: ["leche"] },
@@ -301,6 +344,7 @@ export async function loadDemo(farmId: string, userId: string) {
     if (existing.length) {
       await loadSupplies(tx, farmId, userId, today);
       const added = await loadExtras(tx, farmId, userId, today);
+      await loadOwners(tx, farmId, userId, today);
       return { created: added, already: added === 0 };
     }
 
@@ -505,6 +549,7 @@ export async function loadDemo(farmId: string, userId: string) {
     );
     await loadSupplies(tx, farmId, userId, today, session.id);
     const added = await loadExtras(tx, farmId, userId, today);
+    await loadOwners(tx, farmId, userId, today);
     return { created: rows.length + sheep.length + 1 + added, already: false };
   });
 }
@@ -520,6 +565,8 @@ export async function clearDemo(farmId: string) {
       .delete(schema.healthSessions)
       .where(and(eq(schema.healthSessions.farmId, farmId), inArray(schema.healthSessions.product, [DEMO_PRODUCT, DEMO_SHEARING])));
     await tx.delete(schema.paddocks).where(and(eq(schema.paddocks.farmId, farmId), inArray(schema.paddocks.name, DEMO_PADDOCKS.map((p) => p.name))));
+    await tx.delete(schema.expenses).where(and(eq(schema.expenses.farmId, farmId), like(schema.expenses.concept, "%(prueba)")));
+    await tx.delete(schema.owners).where(and(eq(schema.owners.farmId, farmId), like(schema.owners.name, "%(prueba)")));
     await tx.delete(schema.supplies).where(and(eq(schema.supplies.farmId, farmId), like(schema.supplies.name, "%(prueba)")));
     await tx.delete(schema.weatherLogs).where(and(eq(schema.weatherLogs.farmId, farmId), eq(schema.weatherLogs.note, "Dato de prueba")));
     await tx.delete(schema.farmMaps).where(and(eq(schema.farmMaps.farmId, farmId), like(schema.farmMaps.svg, `%"viewBox":"${DEMO_MAP_VIEWBOX}"%`)));

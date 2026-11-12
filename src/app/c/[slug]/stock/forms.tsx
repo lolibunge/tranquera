@@ -86,7 +86,7 @@ export function MoveForm({ slug, supplyId, unit, today }: { slug: string; supply
         <Field id="date" name="date" type="date" label="Fecha" max={today} defaultValue={today} required />
       </div>
       {kind === "entrada" ? (
-        <div className="grid grid-cols-[1fr_auto] gap-3">
+        <div className="grid grid-cols-[1fr_6.5rem] gap-3">
           <Field id="unitCost" name="unitCost" label={`Costo por ${unit}`} inputMode="decimal" placeholder="Opcional" />
           <SelectField id="currency" name="currency" label="Moneda" defaultValue="USD">
             <option value="USD">US$</option>

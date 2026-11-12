@@ -22,11 +22,14 @@ export type AnimalValues = {
   arrivedOn: string;
   notes: string;
   paddockId: string;
+  ownerId?: string;
 };
 
 type Props = {
   slug: string;
   paddocks?: { id: string; name: string }[];
+  /** Propietarios del campo (solo si hay y el usuario maneja cuentas). */
+  owners?: { id: string; name: string }[];
   initial: AnimalValues;
   /** Especies prendidas en el campo (para cambiar al cargar uno nuevo). */
   speciesOptions?: SpeciesKey[];
@@ -52,6 +55,7 @@ export function AnimalForm(props: Props) {
         originDetail: kept.originDetail ?? "",
         arrivedOn: kept.arrivedOn ?? "",
         paddockId: kept.paddockId ?? "",
+        ownerId: kept.ownerId ?? props.initial.ownerId ?? "",
       }
     : props.initial;
   return <AnimalFormBody key={state.at ?? 0} {...props} initial={start} state={state} action={action} pending={pending} autoFocus={Boolean(kept)} />;
@@ -60,6 +64,7 @@ export function AnimalForm(props: Props) {
 function AnimalFormBody({
   slug,
   paddocks = [],
+  owners = [],
   initial,
   speciesOptions = [],
   today,
@@ -222,6 +227,17 @@ function AnimalFormBody({
           {paddocks.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
+            </option>
+          ))}
+        </SelectField>
+      ) : null}
+
+      {owners.length ? (
+        <SelectField id="ownerId" name="ownerId" label="Propietario" value={v.ownerId ?? ""} onChange={(e) => set("ownerId", e.target.value)}>
+          <option value="">Del campo (sin asignar)</option>
+          {owners.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
             </option>
           ))}
         </SelectField>
