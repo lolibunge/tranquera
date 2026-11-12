@@ -38,12 +38,35 @@ export const users = pgTable(
   "usuarios",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    email: text("email").notNull(),
+    // Mail o celular: al menos uno. Los empleados sin mail entran con celular.
+    email: text("email"),
+    phone: text("celular"),
     name: text("nombre").notNull(),
     passwordHash: text("password_hash"),
     ...timestamps,
   },
-  (t) => [uniqueIndex("usuarios_email_unq").on(t.email)],
+  (t) => [uniqueIndex("usuarios_email_unq").on(t.email), uniqueIndex("usuarios_celular_unq").on(t.phone)],
+);
+
+/**
+ * Códigos para activar una cuenta sin mail (o poner contraseña nueva si se olvidó).
+ * Los genera un dueño o encargado; se usan una vez y vencen. Se guarda solo el hash.
+ */
+export const accessCodes = pgTable(
+  "codigos_acceso",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("usuario_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("codigo_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    failedAttempts: integer("intentos_fallidos").notNull().default(0),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("codigos_usuario_idx").on(t.userId)],
 );
 
 export const sessions = pgTable(

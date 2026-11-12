@@ -8,6 +8,8 @@ import { hashPassword, verifyPassword, newToken, hashToken } from "@/lib/crypto"
 import { endSession, normalizeEmail, safeNext, startSession } from "@/lib/auth";
 import { appUrl, buttonMail, sendMail } from "@/lib/email";
 import { consumeLoginToken } from "@/lib/login-links";
+import { redeemAccessCode } from "@/lib/access-codes";
+import { isValidPhone, looksLikeEmail, normalizePhone } from "@/lib/phone";
 
 export type FormState = { error?: string; ok?: string; devLink?: string; values?: Record<string, string> };
 
@@ -46,24 +48,46 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
 }
 
 export async function signIn(_prev: FormState, formData: FormData): Promise<FormState> {
-  const values = { email: String(formData.get("email") ?? "") };
-  const parsed = z.object({ email: emailField, password: z.string().min(1, "Escribí tu contraseña.") }).safeParse({
-    email: values.email,
-    password: formData.get("password"),
-  });
-  if (!parsed.success) return { error: parsed.error.issues[0].message, values };
+  const login = String(formData.get("login") ?? "").trim();
+  const values = { login };
+  const password = String(formData.get("password") ?? "");
+  if (!login) return { error: "Escribí tu mail o tu celular.", values };
+  if (!password) return { error: "Escribí tu contraseña.", values };
 
+  const byEmail = looksLikeEmail(login);
+  const key = byEmail ? normalizeEmail(login) : normalizePhone(login);
+  if (!byEmail && !isValidPhone(key)) return { error: "Ese celular no parece válido.", values };
   const [user] = await db
     .select({ id: schema.users.id, passwordHash: schema.users.passwordHash })
     .from(schema.users)
-    .where(eq(schema.users.email, normalizeEmail(parsed.data.email)))
+    .where(byEmail ? eq(schema.users.email, key) : eq(schema.users.phone, key))
     .limit(1);
   // Siempre se calcula el hash, exista o no la cuenta, para no dar pistas por el tiempo de respuesta.
-  const valid = await verifyPassword(parsed.data.password, user?.passwordHash ?? FAKE_HASH);
-  if (!user || !valid) return { error: "Mail o contraseña incorrectos.", values };
+  const valid = await verifyPassword(password, user?.passwordHash ?? FAKE_HASH);
+  if (user && !user.passwordHash && !byEmail) {
+    return { error: "Tu cuenta todavía no está activada. Usá el código que te dieron en “Activar cuenta”.", values };
+  }
+  if (!user || !valid) return { error: byEmail ? "Mail o contraseña incorrectos." : "Celular o contraseña incorrectos.", values };
 
   await startSession(user.id);
   redirect(safeNext(formData.get("next")));
+}
+
+/** Activa una cuenta sin mail (o pone contraseña nueva) con el código que dio el dueño o encargado. */
+export async function activateWithCode(_prev: FormState, formData: FormData): Promise<FormState> {
+  const phone = normalizePhone(String(formData.get("phone") ?? ""));
+  const code = String(formData.get("code") ?? "");
+  const password = String(formData.get("password") ?? "");
+  const values = { phone: String(formData.get("phone") ?? ""), code };
+  if (!isValidPhone(phone)) return { error: "Ese celular no parece válido.", values };
+  if (code.replace(/[^A-Z0-9]/gi, "").length !== 8) return { error: "El código tiene 8 letras y números.", values };
+  if (password.length < 8) return { error: "La contraseña tiene que tener al menos 8 caracteres.", values };
+  const [user] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.phone, phone)).limit(1);
+  if (!user) return { error: "No hay ninguna cuenta con ese celular. Revisá el número.", values };
+  const result = await redeemAccessCode(user.id, code, password);
+  if (!result.ok) return { error: result.error, values };
+  await startSession(user.id);
+  redirect("/campos");
 }
 
 const FAKE_HASH =

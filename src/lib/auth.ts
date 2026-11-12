@@ -9,7 +9,7 @@ import { newToken, hashToken } from "./crypto";
 const SESSION_COOKIE = "tq_sesion";
 const SESSION_DAYS = 30;
 
-export type CurrentUser = { id: string; email: string; name: string; hasPassword: boolean };
+export type CurrentUser = { id: string; email: string | null; phone: string | null; name: string; hasPassword: boolean };
 
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -48,6 +48,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     .select({
       id: schema.users.id,
       email: schema.users.email,
+      phone: schema.users.phone,
       name: schema.users.name,
       passwordHash: schema.users.passwordHash,
     })
@@ -56,7 +57,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     .where(and(eq(schema.sessions.id, hashToken(token)), gt(schema.sessions.expiresAt, new Date())))
     .limit(1);
   if (!row) return null;
-  return { id: row.id, email: row.email, name: row.name, hasPassword: Boolean(row.passwordHash) };
+  return { id: row.id, email: row.email, phone: row.phone, name: row.name, hasPassword: Boolean(row.passwordHash) };
 });
 
 /** Para páginas que requieren estar adentro. */

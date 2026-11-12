@@ -18,6 +18,12 @@ export default async function SignInPage({ searchParams }: PageProps<"/entrar">)
       ) : null}
       <SignInForms next={next} />
       <p className="text-[15px] text-ink-2">
+        ¿Te dieron un código?{" "}
+        <Link href="/activar" className="font-semibold text-brand underline-offset-4 hover:underline">
+          Activar cuenta
+        </Link>
+      </p>
+      <p className="text-[15px] text-ink-2">
         ¿Primera vez?{" "}
         <Link href={`/registro${next !== "/campos" ? `?volver=${encodeURIComponent(next)}` : ""}`} className="font-semibold text-brand underline-offset-4 hover:underline">
           Crear una cuenta

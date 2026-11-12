@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { and, asc, eq, gt, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getFarmAccess } from "@/lib/farms";
 import { can, ROLE_LABEL, ROLES } from "@/lib/roles";
+import { formatPhone } from "@/lib/phone";
 import { BackLink, Card, PageTitle, SectionTitle, StatusPill } from "@/components/ui";
 import { InviteForm, MemberRow, RevokeInvitation } from "./forms";
 
@@ -17,7 +18,14 @@ export default async function TeamPage({ params }: PageProps<"/c/[slug]/usuarios
   const manageOwners = can(role, "dueños");
 
   const members = await db
-    .select({ id: schema.users.id, name: schema.users.name, email: schema.users.email, role: schema.memberships.role })
+    .select({
+      id: schema.users.id,
+      name: schema.users.name,
+      email: schema.users.email,
+      phone: schema.users.phone,
+      active: sql<boolean>`${schema.users.passwordHash} is not null`,
+      role: schema.memberships.role,
+    })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.farmId, farm.id))
@@ -52,7 +60,7 @@ export default async function TeamPage({ params }: PageProps<"/c/[slug]/usuarios
             <MemberRow
               key={m.id}
               slug={slug}
-              member={{ ...m, roleLabel: ROLE_LABEL[m.role] }}
+              member={{ ...m, contact: m.email ?? formatPhone(m.phone), roleLabel: ROLE_LABEL[m.role] }}
               isMe={m.id === user.id}
               editable={manage && m.id !== user.id && (m.role !== "dueno" || manageOwners)}
               roles={assignable}

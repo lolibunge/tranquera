@@ -35,7 +35,7 @@ export function SignInForms({ next }: { next: string }) {
       {mode === "password" ? (
         <form action={pwAction} className="flex flex-col gap-4">
           <input type="hidden" name="next" value={next} />
-          <Field id="email" name="email" type="email" label="Mail" autoComplete="email" inputMode="email" required defaultValue={pwState.values?.email} />
+          <Field id="login" name="login" type="text" label="Mail o celular" autoComplete="username" autoCapitalize="none" required defaultValue={pwState.values?.login} />
           <Field id="password" name="password" type="password" label="Contraseña" autoComplete="current-password" required />
           {pwState.error ? <Notice tone="bad">{pwState.error}</Notice> : null}
           <Button type="submit" disabled={pwPending}>

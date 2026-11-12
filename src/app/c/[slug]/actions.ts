@@ -11,6 +11,8 @@ import { getFarmAccess } from "@/lib/farms";
 import { can, isRole, ROLE_LABEL, type Permission, type Role } from "@/lib/roles";
 import { contrastWithWhite } from "@/lib/color";
 import { CATALOG, SPECIES_KEYS } from "@/lib/catalogo";
+import { createAccessCode } from "@/lib/access-codes";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 
 export type ActionState = { error?: string; ok?: string; link?: string; at?: number };
 
@@ -238,4 +240,63 @@ export async function saveSpecies(_prev: ActionState, formData: FormData): Promi
   });
   revalidatePath(`/c/${access.farm.slug}`, "layout");
   return { ok: "Especies guardadas.", at: Date.now() };
+}
+
+export type CodeState = ActionState & { code?: string; phone?: string; name?: string };
+
+/** Suma al campo a alguien sin mail: nombre y celular. Devuelve el código para activar la cuenta. */
+export async function addPhoneMember(_prev: CodeState, formData: FormData): Promise<CodeState> {
+  const { access, denied } = await guard(formData, "usuarios");
+  if (denied) return { error: denied };
+  const name = String(formData.get("name") ?? "").trim();
+  const phone = normalizePhone(String(formData.get("phone") ?? ""));
+  const role = formData.get("role");
+  if (name.length < 2) return { error: "Escribí el nombre." };
+  if (!isValidPhone(phone)) return { error: "Ese celular no parece válido. Ejemplo: 099 123 456." };
+  if (!isRole(role)) return { error: "Elegí un rol." };
+  if (role === "dueno" && !can(access.role, "dueños")) return { error: "Solo un dueño puede sumar a otro dueño." };
+
+  const [existing] = await db
+    .select({ id: schema.users.id, hasPassword: schema.users.passwordHash })
+    .from(schema.users)
+    .where(eq(schema.users.phone, phone))
+    .limit(1);
+  if (existing) {
+    const already = await memberRole(access.farm.id, existing.id);
+    if (already) return { error: "Esa persona ya está en el campo." };
+    await db.insert(schema.memberships).values({ farmId: access.farm.id, userId: existing.id, role });
+    revalidatePath(`/c/${access.farm.slug}/usuarios`);
+    if (existing.hasPassword) {
+      return { ok: `${name} ya tenía cuenta: entra con su celular y su contraseña de siempre.`, at: Date.now() };
+    }
+    const code = await createAccessCode(existing.id, access.user.id);
+    return { ok: "Listo. Pasale el código para activar su cuenta.", code, phone, name, link: await activationLink(phone), at: Date.now() };
+  }
+
+  const userId = await db.transaction(async (tx) => {
+    const [user] = await tx.insert(schema.users).values({ name, phone }).returning({ id: schema.users.id });
+    await tx.insert(schema.memberships).values({ farmId: access.farm.id, userId: user.id, role });
+    return user.id;
+  });
+  const code = await createAccessCode(userId, access.user.id);
+  revalidatePath(`/c/${access.farm.slug}/usuarios`);
+  return { ok: "Listo. Pasale el código para activar su cuenta.", code, phone, name, link: await activationLink(phone), at: Date.now() };
+}
+
+/** Código nuevo para alguien del campo con celular (no activó, o se olvidó la contraseña). */
+export async function newAccessCode(_prev: CodeState, formData: FormData): Promise<CodeState> {
+  const { access, denied } = await guard(formData, "usuarios");
+  if (denied) return { error: denied };
+  const userId = String(formData.get("userId") ?? "");
+  const current = await memberRole(access.farm.id, userId);
+  if (!current) return { error: "Esa persona ya no está en el campo." };
+  if (current === "dueno" && !can(access.role, "dueños")) return { error: "Solo un dueño puede hacer esto con otro dueño." };
+  const [user] = await db.select({ phone: schema.users.phone, name: schema.users.name }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (!user?.phone) return { error: "Esa persona entra con mail: que use “Con enlace por mail” en la pantalla de entrar." };
+  const code = await createAccessCode(userId, access.user.id);
+  return { ok: "Código nuevo. El anterior ya no sirve.", code, phone: user.phone, name: user.name, link: await activationLink(user.phone), at: Date.now() };
+}
+
+async function activationLink(phone: string) {
+  return `${await appUrl()}/activar?cel=${encodeURIComponent(phone)}`;
 }
