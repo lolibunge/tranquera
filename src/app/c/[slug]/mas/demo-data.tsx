@@ -13,8 +13,7 @@ export function DemoData({ slug, hasDemo }: { slug: string; hasDemo: boolean }) 
     <Card className="flex flex-col gap-3">
       <p className="text-base font-semibold">Datos de prueba</p>
       <p className="text-sm leading-snug text-ink-2">
-        11 vacunos con caravanas UY 9000…, sanidad vencida, por vencer y al día, y una jornada de manga empezada. Sirve para probar o mostrar la app.
-        Borrar quita solo esos animales.
+        11 vacunos (UY 9000…) y 20 ovinos (UY 9100…), 4 potreros con animales, sanidad vencida, por vencer y al día, lluvias y una jornada de manga empezada. Borrar quita solo eso.
       </p>
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
       {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}

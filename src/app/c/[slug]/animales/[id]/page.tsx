@@ -5,6 +5,10 @@ import { getFarmAccess } from "@/lib/farms";
 import { getAnimal } from "@/lib/animals";
 import { CATALOG, SEX_LABEL, categoryOf, formatTag, isSpeciesKey, type Sex } from "@/lib/catalogo";
 import { controlsForAnimal, healthHistory } from "@/lib/health";
+import { animalMovements } from "@/lib/paddocks";
+import { DEATH_CAUSES } from "@/lib/sales";
+import { eq } from "drizzle-orm";
+import { db, schema } from "@/db";
 import { ageLabel, formatDate, relativeDays, todayISO } from "@/lib/dates";
 import { can } from "@/lib/roles";
 import { BackLink, Card, SectionTitle, StatusPill } from "@/components/ui";
@@ -27,7 +31,12 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
   if (!a || !isSpeciesKey(a.species)) notFound();
   const info = CATALOG[a.species];
   const today = todayISO();
-  const [controls, history] = await Promise.all([controlsForAnimal(farm.id, a.id, a.species), healthHistory(farm.id, a.id)]);
+  const [controls, history, moves, paddock] = await Promise.all([
+    controlsForAnimal(farm.id, a.id, a.species),
+    healthHistory(farm.id, a.id),
+    animalMovements(farm.id, a.id),
+    a.paddockId ? db.select({ id: schema.paddocks.id, name: schema.paddocks.name }).from(schema.paddocks).where(eq(schema.paddocks.id, a.paddockId)).limit(1) : Promise.resolve([]),
+  ]);
   const title = a.isLot ? a.name : a.tagVisual ? formatTag(a.tagVisual) : a.name ?? formatTag(a.tagRfid);
   const sub = [
     a.isLot ? `Lote · ${a.headCount} cabezas` : categoryOf(a.species, a.category)?.label,
@@ -56,12 +65,23 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
         {sub ? <p className="text-[15px] text-ink-2">{sub}</p> : null}
         <div className="mt-1 flex flex-wrap gap-2">
           {a.tagVisual && a.name && !a.isLot ? <span className="rounded-full bg-chip px-2.5 py-1 text-[13px] font-semibold">{a.name}</span> : null}
+          {paddock[0] ? (
+            <Link href={`/c/${slug}/potreros/${paddock[0].id}`} className="rounded-full bg-brand-soft px-2.5 py-1 text-[13px] font-semibold text-brand">
+              {paddock[0].name}
+            </Link>
+          ) : null}
           {a.origin ? <span className="rounded-full bg-chip px-2.5 py-1 text-[13px] font-semibold">{a.origin === "nacido" ? "Nació en el campo" : "Comprado"}</span> : null}
           {a.status !== "activo" ? (
             <StatusPill tone="info">
               {statusLabel[a.status]}
               {a.statusDate ? ` el ${formatDate(a.statusDate)}` : ""}
+              {a.statusCause ? ` · ${DEATH_CAUSES.find((c) => c.value === a.statusCause)?.label ?? a.statusCause}` : ""}
             </StatusPill>
+          ) : null}
+          {a.saleId ? (
+            <Link href={`/c/${slug}/ventas/${a.saleId}`} className="rounded-full bg-chip px-2.5 py-1 text-[13px] font-semibold text-brand">
+              Ver la venta
+            </Link>
           ) : null}
         </div>
       </div>
@@ -116,7 +136,10 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
           <ul className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface">
             {history.map((h) => (
               <li key={h.id} className="flex flex-col gap-0.5 border-b border-chip px-4 py-3 last:border-b-0">
-                <span className="text-[15px] font-semibold">{h.label}</span>
+                <span className="text-[15px] font-semibold">
+                  {h.label}
+                  {h.result ? <span className="font-normal text-ink-2"> · {/^\d/.test(h.result) ? `${h.result} kg` : h.result}</span> : null}
+                </span>
                 <span className="text-[13px] text-muted">
                   {[formatDate(h.date), h.product, h.batch ? `serie ${h.batch}` : null, h.dose, h.vet, h.sessionId ? "jornada de manga" : null]
                     .filter(Boolean)
@@ -130,6 +153,20 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
         ) : (
           <p className="text-sm text-muted">Todavía no hay registros.</p>
         )}
+        {moves.length ? (
+          <ul className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+            {moves.map((m) => (
+              <li key={m.id} className="border-b border-chip px-4 py-2.5 text-[15px] last:border-b-0">
+                <span className="font-semibold">{m.to ? `Entró a ${m.to}` : `Salió de ${m.from ?? "potrero"}`}</span>
+                <span className="text-muted">
+                  {" "}
+                  · {formatDate(m.date)}
+                  {m.to && m.from ? ` · desde ${m.from}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {a.notes ? (
           <Card>
             <p className="text-[13px] font-semibold text-muted">Notas</p>

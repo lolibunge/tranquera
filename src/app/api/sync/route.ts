@@ -19,6 +19,7 @@ const op = z.discriminatedUnion("kind", [
     clientId: z.string().uuid(),
     sessionId: z.string().uuid(),
     animalId: z.string().uuid(),
+    result: z.string().max(40).nullable().optional(),
   }),
   z.object({ kind: z.literal("undo"), clientId: z.string().uuid() }),
   z.object({
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
           vet: s.vet ?? undefined,
           sessionId: s.id,
           clientId: item.clientId,
+          result: item.result ?? null,
         });
         results.push(r.ok ? { clientId: item.clientId, ok: true } : { clientId: item.clientId, ok: false, error: r.error });
         continue;

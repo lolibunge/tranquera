@@ -29,6 +29,20 @@
       "when": 1794496869821,
       "tag": "0003_sin_mail",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794501976724,
+      "tag": "0004_potreros_ventas",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794502110480,
+      "tag": "0005_resultado",
+      "breakpoints": true
     }
   ]
 }

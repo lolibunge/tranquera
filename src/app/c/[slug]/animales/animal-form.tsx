@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { Button, Field, Notice } from "@/components/ui";
+import { Button, Field, Notice, SelectField } from "@/components/ui";
 import { CATALOG, type SpeciesKey } from "@/lib/catalogo";
 import { saveAnimal, type AnimalFormState } from "./actions";
 
@@ -21,10 +21,12 @@ export type AnimalValues = {
   originDetail: string;
   arrivedOn: string;
   notes: string;
+  paddockId: string;
 };
 
 type Props = {
   slug: string;
+  paddocks?: { id: string; name: string }[];
   initial: AnimalValues;
   /** Especies prendidas en el campo (para cambiar al cargar uno nuevo). */
   speciesOptions?: SpeciesKey[];
@@ -49,6 +51,7 @@ export function AnimalForm(props: Props) {
         origin: (kept.origin as AnimalValues["origin"]) ?? "",
         originDetail: kept.originDetail ?? "",
         arrivedOn: kept.arrivedOn ?? "",
+        paddockId: kept.paddockId ?? "",
       }
     : props.initial;
   return <AnimalFormBody key={state.at ?? 0} {...props} initial={start} state={state} action={action} pending={pending} autoFocus={Boolean(kept)} />;
@@ -56,6 +59,7 @@ export function AnimalForm(props: Props) {
 
 function AnimalFormBody({
   slug,
+  paddocks = [],
   initial,
   speciesOptions = [],
   today,
@@ -211,6 +215,17 @@ function AnimalFormBody({
           </div>
         ) : null}
       </div>
+
+      {paddocks.length && !editing ? (
+        <SelectField id="paddockId" name="paddockId" label="Potrero" value={v.paddockId} onChange={(e) => set("paddockId", e.target.value)}>
+          <option value="">Sin potrero</option>
+          {paddocks.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </SelectField>
+      ) : null}
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="notes" className="text-sm font-semibold">

@@ -40,6 +40,8 @@ export default async function SessionPage({ params }: PageProps<"/c/[slug]/sanid
       </div>
       <MangaRunner
         slug={slug}
+        species={species}
+        control={session.control}
         sessionId={session.id}
         closed={Boolean(session.closedAt)}
         canWrite={can(role, "sanidad")}

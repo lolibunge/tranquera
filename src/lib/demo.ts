@@ -10,6 +10,13 @@ import { addDays, todayISO } from "./dates";
  */
 
 const PREFIX_VISUAL = "UY9000";
+const PREFIX_SHEEP = "UY9100";
+const DEMO_PADDOCKS = [
+  { name: "Potrero 1 (prueba)", hectares: 45, kind: "natural" },
+  { name: "Potrero 2 (prueba)", hectares: 30, kind: "pradera" },
+  { name: "Bajo (prueba)", hectares: 60, kind: "natural" },
+  { name: "Verdeo (prueba)", hectares: 15, kind: "verdeo" },
+];
 const PREFIX_RFID = "85800009";
 const DEMO_NAME = "La Pinta (prueba)";
 const DEMO_PRODUCT = "Aftosa Prueba";
@@ -42,8 +49,32 @@ const ANIMALS: Demo[] = [
 ];
 
 function isDemo() {
-  return or(like(schema.animals.tagVisual, `${PREFIX_VISUAL}%`), like(schema.animals.tagRfid, `${PREFIX_RFID}%`), eq(schema.animals.name, DEMO_NAME));
+  return or(
+    like(schema.animals.tagVisual, `${PREFIX_VISUAL}%`),
+    like(schema.animals.tagVisual, `${PREFIX_SHEEP}%`),
+    like(schema.animals.tagRfid, `${PREFIX_RFID}%`),
+    eq(schema.animals.name, DEMO_NAME),
+  );
 }
+
+/** Mapa de prueba: cuatro potreros dibujados a mano. viewBox propio para reconocerlo al borrar. */
+const DEMO_MAP_VIEWBOX = "0 0 400 301";
+const DEMO_MAP = {
+  viewBox: DEMO_MAP_VIEWBOX,
+  shapes: [
+    { tag: "polygon", attrs: { points: "10,10 210,10 190,140 10,150" }, transform: "", name: "Potrero 1 (prueba)" },
+    { tag: "polygon", attrs: { points: "210,10 390,10 390,130 190,140" }, transform: "", name: "Potrero 2 (prueba)" },
+    { tag: "polygon", attrs: { points: "10,150 190,140 220,290 10,290" }, transform: "", name: "Bajo (prueba)" },
+    { tag: "polygon", attrs: { points: "190,140 390,130 390,290 220,290" }, transform: "", name: "Verdeo (prueba)" },
+  ],
+};
+
+const SHEEP: { category: string; sex: string; n: number }[] = [
+  { category: "oveja", sex: "hembra", n: 12 },
+  { category: "borrega", sex: "hembra", n: 4 },
+  { category: "carnero", sex: "macho", n: 2 },
+  { category: "capon", sex: "castrado", n: 2 },
+];
 
 export async function loadDemo(farmId: string, userId: string) {
   const today = todayISO();
@@ -54,8 +85,24 @@ export async function loadDemo(farmId: string, userId: string) {
       .values({ farmId, speciesKey: "vacuno", active: true, orientations: ["cria"], sells: 1 })
       .onConflictDoUpdate({ target: [schema.farmSpecies.farmId, schema.farmSpecies.speciesKey], set: { active: true, updatedAt: new Date() } });
 
+    await tx
+      .insert(schema.farmSpecies)
+      .values({ farmId, speciesKey: "ovino", active: true, orientations: ["lana", "cria"], sells: 1 })
+      .onConflictDoUpdate({ target: [schema.farmSpecies.farmId, schema.farmSpecies.speciesKey], set: { active: true, updatedAt: new Date() } });
+
     const existing = await tx.select({ id: schema.animals.id }).from(schema.animals).where(and(eq(schema.animals.farmId, farmId), isDemo()));
     if (existing.length) return { created: 0, already: true };
+
+    // Potreros de prueba (si ya existen con ese nombre, se reusan).
+    const paddockIds: string[] = [];
+    for (const p of DEMO_PADDOCKS) {
+      const [row] = await tx
+        .insert(schema.paddocks)
+        .values({ farmId, name: p.name, hectares: p.hectares, kind: p.kind })
+        .onConflictDoUpdate({ target: [schema.paddocks.farmId, schema.paddocks.name], set: { active: true, updatedAt: new Date() } })
+        .returning({ id: schema.paddocks.id });
+      paddockIds.push(row.id);
+    }
 
     const rows = await tx
       .insert(schema.animals)
@@ -76,8 +123,65 @@ export async function loadDemo(farmId: string, userId: string) {
           createdBy: userId,
         })),
       )
-      .returning({ id: schema.animals.id, tag: schema.animals.tagVisual });
+      .returning({ id: schema.animals.id, tag: schema.animals.tagVisual, category: schema.animals.category });
     const id = (tag: string) => rows.find((r) => r.tag === tag)!.id;
+
+    // 20 ovinos para probar la esquila.
+    let n = 0;
+    const sheep = await tx
+      .insert(schema.animals)
+      .values(
+        SHEEP.flatMap((g) =>
+          Array.from({ length: g.n }, () => {
+            n++;
+            return {
+              farmId,
+              species: "ovino",
+              category: g.category,
+              sex: g.sex,
+              tagVisual: `${PREFIX_SHEEP}${String(n).padStart(4, "0")}`,
+              breed: "Corriedale",
+              origin: "nacido" as const,
+              createdBy: userId,
+            };
+          }),
+        ),
+      )
+      .returning({ id: schema.animals.id });
+
+    // Vacas y toro en el Potrero 1, terneros en el 2, ovinos en el Bajo; el Verdeo descansa.
+    const place = async (ids: string[], paddockId: string, daysAgo: number) => {
+      const date = addDays(today, -daysAgo);
+      const batchId = crypto.randomUUID();
+      await tx.insert(schema.movements).values(ids.map((animalId) => ({ farmId, animalId, toPaddockId: paddockId, date, batchId, createdBy: userId })));
+      await tx.update(schema.animals).set({ paddockId }).where(inArray(schema.animals.id, ids));
+    };
+    const adults = rows.filter((r) => !["ternero", "ternera"].includes(r.category ?? "")).map((r) => r.id);
+    const calves = rows.filter((r) => !adults.includes(r.id)).map((r) => r.id);
+    await place(adults, paddockIds[0], 12);
+    await place(calves, paddockIds[1], 5);
+    await place(sheep.map((s) => s.id), paddockIds[2], 20);
+    // El verdeo tuvo animales y está en descanso hace 9 días.
+    const rest = crypto.randomUUID();
+    await tx.insert(schema.movements).values([
+      { farmId, animalId: calves[0], fromPaddockId: paddockIds[3], toPaddockId: paddockIds[1], date: addDays(today, -9), batchId: rest, createdBy: userId },
+    ]);
+
+    // Mapa de prueba, solo si el campo no tiene uno propio.
+    const [hasMap] = await tx.select({ farmId: schema.farmMaps.farmId }).from(schema.farmMaps).where(eq(schema.farmMaps.farmId, farmId)).limit(1);
+    if (!hasMap) {
+      await tx.insert(schema.farmMaps).values({ farmId, svg: JSON.stringify(DEMO_MAP) });
+      for (const [i, p] of DEMO_PADDOCKS.entries()) await tx.update(schema.paddocks).set({ svgId: p.name }).where(eq(schema.paddocks.id, paddockIds[i]));
+    }
+
+    // Lluvias de los últimos días.
+    await tx
+      .insert(schema.weatherLogs)
+      .values([
+        { farmId, date: addDays(today, -6), rainMm: 18, createdBy: userId, note: "Dato de prueba" },
+        { farmId, date: addDays(today, -2), rainMm: 7.5, createdBy: userId, note: "Dato de prueba" },
+      ])
+      .onConflictDoNothing();
 
     // Un vencido, uno por vencer, uno al día y uno sin próxima fecha (fechas relativas a hoy).
     await tx.insert(schema.healthEvents).values([
@@ -107,15 +211,21 @@ export async function loadDemo(farmId: string, userId: string) {
         createdBy: userId,
       })),
     );
-    return { created: rows.length, already: false };
+    return { created: rows.length + sheep.length, already: false };
   });
 }
 
 export async function clearDemo(farmId: string) {
   return db.transaction(async (tx) => {
-    const ids = (await tx.select({ id: schema.animals.id }).from(schema.animals).where(and(eq(schema.animals.farmId, farmId), isDemo()))).map((r) => r.id);
+    const demo = await tx.select({ id: schema.animals.id, saleId: schema.animals.saleId }).from(schema.animals).where(and(eq(schema.animals.farmId, farmId), isDemo()));
+    const ids = demo.map((r) => r.id);
+    const saleIds = [...new Set(demo.map((r) => r.saleId).filter(Boolean) as string[])];
+    if (saleIds.length) await tx.delete(schema.sales).where(and(eq(schema.sales.farmId, farmId), inArray(schema.sales.id, saleIds)));
     if (ids.length) await tx.delete(schema.animals).where(inArray(schema.animals.id, ids)); // la sanidad se borra en cascada
     await tx.delete(schema.healthSessions).where(and(eq(schema.healthSessions.farmId, farmId), eq(schema.healthSessions.product, DEMO_PRODUCT)));
+    await tx.delete(schema.paddocks).where(and(eq(schema.paddocks.farmId, farmId), inArray(schema.paddocks.name, DEMO_PADDOCKS.map((p) => p.name))));
+    await tx.delete(schema.weatherLogs).where(and(eq(schema.weatherLogs.farmId, farmId), eq(schema.weatherLogs.note, "Dato de prueba")));
+    await tx.delete(schema.farmMaps).where(and(eq(schema.farmMaps.farmId, farmId), like(schema.farmMaps.svg, `%"viewBox":"${DEMO_MAP_VIEWBOX}"%`)));
     return ids.length;
   });
 }

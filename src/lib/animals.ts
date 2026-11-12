@@ -46,6 +46,7 @@ export const animalInput = z.object({
   arrivedOn: optionalDate("ingreso"),
   notes: optionalText(1000),
   clientId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
+  paddockId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
 });
 export type AnimalInput = z.input<typeof animalInput>;
 
@@ -96,11 +97,21 @@ export async function prepareAnimal(farmId: string, raw: AnimalInput, editingId?
     if (dup) return { ok: false, error: "Ya hay un animal activo con esa caravana en el campo." };
   }
 
+  if (d.paddockId) {
+    const [p] = await db
+      .select({ id: schema.paddocks.id })
+      .from(schema.paddocks)
+      .where(and(eq(schema.paddocks.id, d.paddockId), eq(schema.paddocks.farmId, farmId)))
+      .limit(1);
+    if (!p) return { ok: false, error: "Elegí un potrero del campo." };
+  }
+
   return {
     ok: true,
     value: {
       farmId,
       species,
+      paddockId: editingId ? undefined : d.paddockId,
       isLot,
       headCount: isLot ? d.headCount : 1,
       category: category?.value ?? null,
@@ -135,6 +146,17 @@ export async function createAnimal(farmId: string, userId: string, raw: AnimalIn
   if (!row && raw.clientId) {
     const [existing] = await db.select({ id: schema.animals.id }).from(schema.animals).where(eq(schema.animals.clientId, raw.clientId)).limit(1);
     if (existing) return { ok: true, value: existing };
+  }
+  if (row && prepared.value.paddockId) {
+    // Entrada al potrero: cuenta para los días de ocupación.
+    await db.insert(schema.movements).values({
+      farmId,
+      animalId: row.id,
+      toPaddockId: prepared.value.paddockId,
+      date: prepared.value.arrivedOn ?? todayISO(),
+      batchId: crypto.randomUUID(),
+      createdBy: userId,
+    });
   }
   return row ? { ok: true, value: row } : { ok: false, error: "No se pudo guardar." };
 }
@@ -230,11 +252,21 @@ export async function setAnimalStatus(
   status: "activo" | "vendido" | "muerto" | "baja",
   date: string | null,
   note: string | null,
+  cause: string | null = null,
 ): Promise<Result<{ id: string }>> {
   if (date && (!isISODate(date) || date > todayISO())) return { ok: false, error: "Revisá la fecha." };
+  if (status === "muerto" && !cause) return { ok: false, error: "Elegí la causa." };
   const [row] = await db
     .update(schema.animals)
-    .set({ status, statusDate: status === "activo" ? null : date ?? todayISO(), statusNote: status === "activo" ? null : note, updatedAt: new Date() })
+    .set({
+      status,
+      statusDate: status === "activo" ? null : date ?? todayISO(),
+      statusNote: status === "activo" ? null : note,
+      statusCause: status === "muerto" ? cause : null,
+      saleId: status === "activo" ? null : undefined,
+      paddockId: status === "activo" ? undefined : null,
+      updatedAt: new Date(),
+    })
     .where(and(eq(schema.animals.id, id), eq(schema.animals.farmId, farmId)))
     .returning({ id: schema.animals.id });
   return row ? { ok: true, value: row } : { ok: false, error: "Ese animal ya no existe." };

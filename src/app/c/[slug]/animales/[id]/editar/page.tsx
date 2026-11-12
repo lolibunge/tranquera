@@ -38,6 +38,7 @@ export default async function EditAnimalPage({ params }: PageProps<"/c/[slug]/an
           originDetail: a.originDetail ?? "",
           arrivedOn: a.arrivedOn ?? "",
           notes: a.notes ?? "",
+          paddockId: a.paddockId ?? "",
         }}
       />
     </div>

@@ -35,10 +35,11 @@ function readAnimal(formData: FormData): AnimalInput {
     originDetail: text(formData, "originDetail"),
     arrivedOn: text(formData, "arrivedOn"),
     notes: text(formData, "notes"),
+    paddockId: text(formData, "paddockId") || null,
   };
 }
 
-const KEEP = ["species", "category", "breed", "origin", "originDetail", "arrivedOn", "isLot"];
+const KEEP = ["species", "category", "breed", "origin", "originDetail", "arrivedOn", "isLot", "paddockId"];
 
 export async function saveAnimal(_prev: AnimalFormState, formData: FormData): Promise<AnimalFormState> {
   const { access, denied } = await guard(formData, "cargar");
@@ -93,6 +94,7 @@ export async function changeStatus(_prev: AnimalFormState, formData: FormData): 
     status as "activo" | "vendido" | "muerto" | "baja",
     text(formData, "date") || null,
     text(formData, "note") || null,
+    text(formData, "cause") || null,
   );
   if (!result.ok) return { error: result.error };
   revalidatePath(`/c/${access.farm.slug}`, "layout");
@@ -113,6 +115,7 @@ export async function addHealth(_prev: AnimalFormState, formData: FormData): Pro
     nextDueDate: text(formData, "nextDueDate") || null,
     vet: text(formData, "vet"),
     notes: text(formData, "notes"),
+    result: text(formData, "result") || null,
   });
   if (!result.ok) return { error: result.error };
   revalidatePath(`/c/${access.farm.slug}`, "layout");

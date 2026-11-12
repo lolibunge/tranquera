@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { Button, Field, Notice, SelectField } from "@/components/ui";
-import { CATALOG, type SpeciesKey } from "@/lib/catalogo";
+import { CATALOG, isHealthControl, type SpeciesKey } from "@/lib/catalogo";
+import { ControlSelect } from "@/components/control-select";
 import { addDays } from "@/lib/dates";
 import { startSession, type SessionState } from "../actions";
 
@@ -20,6 +21,8 @@ export function NewSessionForm({ slug, options, species: initialSpecies, control
     return days ? addDays(from, days) : "";
   };
   const interval = intervalOf(species, control);
+  const info = CATALOG[species].controls.find((c) => c.key === control);
+  const isWork = info ? !isHealthControl(info) : false;
   const [next, setNext] = useState(() => suggest(species, control, today));
 
   return (
@@ -48,27 +51,27 @@ export function NewSessionForm({ slug, options, species: initialSpecies, control
       ) : (
         <input type="hidden" name="species" value={species} />
       )}
-      <SelectField id="control" name="control" label="Qué se aplica" value={control}
-        onChange={(e) => {
-          setControl(e.target.value);
-          setNext(suggest(species, e.target.value, date));
+      <ControlSelect
+        species={species}
+        value={control}
+        onChange={(v) => {
+          setControl(v);
+          setNext(suggest(species, v, date));
         }}
-      >
-        {controls.map((c) => (
-          <option key={c.key} value={c.key}>
-            {c.label}
-          </option>
-        ))}
-        <option value="otro">Otro…</option>
-      </SelectField>
+      />
       {control === "otro" ? <Field id="label" name="label" label="Descripción" required /> : null}
+      {info?.perAnimal ? (
+        <p className="rounded-xl bg-info-bg px-4 py-3 text-sm text-info-fg">
+          Al pasar el bastón te va a pedir {info.perAnimal.type === "choice" ? "el resultado" : `${info.perAnimal.label.toLowerCase()} (${info.perAnimal.unit})`} de cada animal.
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-3">
-        <Field id="product" name="product" label="Producto" />
-        <Field id="batch" name="batch" label="Serie" />
+        <Field id="product" name="product" label={info?.productLabel ?? "Producto"} key={`p-${control}`} />
+        <Field id="batch" name="batch" label={info?.batchLabel ?? "Serie"} key={`b-${control}`} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field id="dose" name="dose" label="Dosis" placeholder="5 ml" />
-        <Field id="vet" name="vet" label="Veterinario" />
+        {isWork ? <span /> : <Field id="dose" name="dose" label="Dosis" placeholder="5 ml" />}
+        <Field id="vet" name="vet" label={info?.vetLabel ?? "Veterinario"} key={`v-${control}`} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field id="date" name="date" type="date" label="Fecha" max={today} required value={date}

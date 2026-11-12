@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { CATALOG, controlOf, isSpeciesKey } from "./catalogo";
+import { CATALOG, controlOf, isHealthControl, isSpeciesKey } from "./catalogo";
 import { addDays, isISODate, todayISO } from "./dates";
 
 /** Días antes del vencimiento en que un control pasa a "vence pronto". */
@@ -63,7 +63,8 @@ export async function healthByAnimal(farmId: string) {
 export async function controlsForAnimal(farmId: string, animalId: string, species: string) {
   const today = todayISO();
   const latest = await latestPerControl(farmId, animalId);
-  const catalog = isSpeciesKey(species) ? CATALOG[species].controls : [];
+  const all = isSpeciesKey(species) ? CATALOG[species].controls : [];
+  const catalog = all.filter(isHealthControl);
   const states = catalog.map((c) => {
     const r = latest.find((l) => l.control === c.key);
     return {
@@ -76,7 +77,7 @@ export async function controlsForAnimal(farmId: string, animalId: string, specie
     };
   });
   for (const r of latest) {
-    if (!catalog.some((c) => c.key === r.control)) {
+    if (!all.some((c) => c.key === r.control)) {
       states.push({ control: r.control, label: r.titulo, official: false, lastDate: r.fecha, nextDue: r.proxima, tone: toneFor(r.proxima, today) });
     }
   }
@@ -128,6 +129,7 @@ export const healthInput = z.object({
   notes: z.string().trim().max(1000).optional(),
   sessionId: z.string().uuid().optional().nullable(),
   clientId: z.string().uuid().optional().nullable(),
+  result: z.string().trim().max(40).optional().nullable(),
 });
 export type HealthInput = z.input<typeof healthInput>;
 
@@ -159,6 +161,16 @@ export async function recordHealth(farmId: string, userId: string, raw: HealthIn
   const known = isSpeciesKey(animal.species) ? controlOf(animal.species, d.control) : null;
   const label = known?.label ?? d.label?.trim();
   if (!label) return { ok: false as const, error: "Escribí qué se hizo." };
+  let result: string | null = d.result?.trim() || null;
+  const per = known?.perAnimal;
+  if (per?.type === "choice" && result && !per.options.some((o) => o.value === result)) return { ok: false as const, error: "Elegí un resultado de la lista." };
+  if (per?.type === "number" && result) {
+    const n = Number(result.replace(",", "."));
+    if (!(n > 0 && n < 5000)) return { ok: false as const, error: `Revisá el ${per.label.toLowerCase()}.` };
+    result = String(n);
+  }
+  if (per && !result && !(per.type === "number" && per.optional)) return { ok: false as const, error: `Falta el ${per.label.toLowerCase()}.` };
+  if (!per) result = null;
   const [row] = await db
     .insert(schema.healthEvents)
     .values({
@@ -174,6 +186,7 @@ export async function recordHealth(farmId: string, userId: string, raw: HealthIn
       nextDueDate: d.nextDueDate || null,
       vet: d.vet || null,
       notes: d.notes || null,
+      result,
       clientId: d.clientId ?? null,
       createdBy: userId,
     })

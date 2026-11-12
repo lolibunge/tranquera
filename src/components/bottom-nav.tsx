@@ -9,8 +9,7 @@ type Item = { href: string; label: string; icon: ReactNode; match: (path: string
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
 /**
- * Barra de abajo. Animales y Sanidad aparecen cuando el campo tiene alguna especie prendida;
- * Potreros se suma en la etapa 2.
+ * Barra de abajo. Animales y Sanidad aparecen cuando el campo tiene alguna especie prendida.
  */
 export function BottomNav({ slug, hasAnimals }: { slug: string; hasAnimals: boolean }) {
   const path = usePathname();
@@ -50,6 +49,16 @@ export function BottomNav({ slug, hasAnimals }: { slug: string; hasAnimals: bool
           },
         ]
       : []),
+    {
+      href: `${base}/potreros`,
+      label: "Potreros",
+      match: (p: string) => p.startsWith(`${base}/potreros`) || p.startsWith(`${base}/mover`),
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+          <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z M9 4v14 M15 6v14" />
+        </svg>
+      ),
+    },
     {
       href: `${base}/mas`,
       label: "Más",

@@ -1,0 +1,1 @@
+ALTER TABLE "sanidad" ADD COLUMN "resultado" text;

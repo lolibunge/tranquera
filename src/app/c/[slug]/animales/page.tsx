@@ -132,9 +132,14 @@ export default async function AnimalsPage({ params, searchParams }: PageProps<"/
           {heads} {heads === 1 ? "cabeza" : "cabezas"}
           {showInactive ? " fuera del padrón" : ""}
         </span>
-        <Link href={href({ ver: showInactive ? null : "bajas" })} className="font-semibold text-brand">
-          {showInactive ? "Ver activos" : "Ver vendidos y bajas"}
-        </Link>
+        <span className="flex gap-4">
+          <Link href={`/c/${slug}/ventas`} className="font-semibold text-brand">
+            Ventas
+          </Link>
+          <Link href={href({ ver: showInactive ? null : "bajas" })} className="font-semibold text-brand">
+            {showInactive ? "Ver activos" : "Ver vendidos y bajas"}
+          </Link>
+        </span>
       </div>
 
       {rows.length ? (

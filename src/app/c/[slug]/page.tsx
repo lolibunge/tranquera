@@ -5,6 +5,10 @@ import { getActiveSpecies } from "@/lib/farm-species";
 import { FarmMark, SectionTitle } from "@/components/ui";
 import { SetupChecklist } from "./setup-checklist";
 import { AttendList } from "@/components/attend-list";
+import Link from "next/link";
+import { frostDays, getForecast } from "@/lib/weather";
+
+const DAY = new Intl.DateTimeFormat("es-UY", { weekday: "long", timeZone: "UTC" });
 
 export async function generateMetadata({ params }: PageProps<"/c/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -18,7 +22,9 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
   const { slug } = await params;
   const { farm, role } = await getFarmAccess(slug);
   const today = DATE.format(new Date());
-  const species = await getActiveSpecies(farm.id);
+  const [species, forecast] = await Promise.all([getActiveSpecies(farm.id), getForecast(farm.latitude, farm.longitude)]);
+  const frost = frostDays(forecast);
+  const now = forecast?.[0];
   const hasSpecies = species.length > 0;
   return (
     <div className="flex flex-col gap-6">
@@ -29,6 +35,22 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
           <p className="text-[13px] text-muted first-letter:uppercase">{today}</p>
         </div>
       </header>
+
+      {now ? (
+        <Link href={`/c/${slug}/clima`} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+          <span className="flex flex-col">
+            <span className="text-[15px] font-semibold">{now.label}</span>
+            <span className="text-[13px] text-muted">
+              {now.rainMm ? `${now.rainMm} mm de lluvia` : "Sin lluvia prevista"}
+              {frost.length ? ` · riesgo de helada ${frost[0].date === forecast?.[0].date ? "hoy" : `el ${DAY.format(new Date(`${frost[0].date}T12:00:00Z`))}`}` : ""}
+            </span>
+          </span>
+          <span className="text-xl font-semibold tabular-nums">
+            {now.max !== null ? `${Math.round(now.max)}°` : ""}
+            <span className="text-base text-muted"> / {now.min !== null ? `${Math.round(now.min)}°` : ""}</span>
+          </span>
+        </Link>
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <SectionTitle>Para atender</SectionTitle>

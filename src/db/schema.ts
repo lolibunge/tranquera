@@ -11,6 +11,8 @@ import {
   primaryKey,
   index,
   uniqueIndex,
+  numeric,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -211,6 +213,9 @@ export const animals = pgTable(
     status: animalStatusEnum("estado").notNull().default("activo"),
     statusDate: date("estado_fecha"),
     statusNote: text("estado_nota"),
+    statusCause: text("estado_causa"),
+    paddockId: uuid("potrero_id").references((): AnyPgColumn => paddocks.id, { onDelete: "set null" }),
+    saleId: uuid("venta_id").references((): AnyPgColumn => sales.id, { onDelete: "set null" }),
     clientId: uuid("client_id"),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
@@ -270,6 +275,8 @@ export const healthEvents = pgTable(
     nextDueDate: date("proxima"),
     vet: text("veterinario"),
     notes: text("notas"),
+    // Dato por animal: resultado del tacto, kilos de la pesada o de lana…
+    result: text("resultado"),
     clientId: uuid("client_id"),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
@@ -303,6 +310,106 @@ export const officialCampaigns = pgTable(
   (t) => [index("campanas_fechas_idx").on(t.species, t.endsOn)],
 );
 
+/** Potreros. svg_id enlaza con la forma del mapa subido (si hay). */
+export const paddocks = pgTable(
+  "potreros",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    name: text("nombre").notNull(),
+    hectares: doublePrecision("hectareas"),
+    kind: text("tipo"), // natural | pradera | verdeo | rastrojo | monte | otro
+    svgId: text("svg_id"),
+    notes: text("notas"),
+    active: boolean("activo").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [index("potreros_campo_idx").on(t.farmId), uniqueIndex("potreros_nombre_unq").on(t.farmId, t.name)],
+);
+
+/** Mapa del campo: el SVG que sube el usuario, ya limpio. */
+export const farmMaps = pgTable("mapas", {
+  farmId: uuid("campo_id")
+    .primaryKey()
+    .references(() => farms.id, { onDelete: "cascade" }),
+  svg: text("svg").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Movimientos: cada animal que cambia de potrero. batch agrupa los que se mueven juntos. */
+export const movements = pgTable(
+  "movimientos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    animalId: uuid("animal_id")
+      .notNull()
+      .references(() => animals.id, { onDelete: "cascade" }),
+    fromPaddockId: uuid("desde_potrero_id").references(() => paddocks.id, { onDelete: "set null" }),
+    toPaddockId: uuid("hacia_potrero_id").references(() => paddocks.id, { onDelete: "set null" }),
+    date: date("fecha").notNull(),
+    batchId: uuid("tanda_id").notNull(),
+    note: text("nota"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("mov_animal_idx").on(t.animalId, t.date),
+    index("mov_desde_idx").on(t.fromPaddockId, t.date),
+    index("mov_hacia_idx").on(t.toPaddockId, t.date),
+    index("mov_tanda_idx").on(t.batchId),
+  ],
+);
+
+/** Ventas: una tropa (varios animales) a un comprador. Por kilo o por cabeza. */
+export const sales = pgTable(
+  "ventas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    date: date("fecha").notNull(),
+    buyer: text("comprador").notNull(),
+    intermediary: text("intermediario"),
+    guide: text("guia"),
+    priceMode: text("modo_precio").notNull(), // kilo | cabeza
+    heads: integer("cabezas").notNull(),
+    kilos: numeric("kilos", { precision: 12, scale: 1 }),
+    unitPrice: numeric("precio_unitario", { precision: 12, scale: 3 }),
+    currency: text("moneda").notNull().default("USD"),
+    gross: numeric("bruto", { precision: 14, scale: 2 }).notNull(),
+    expenses: numeric("gastos", { precision: 14, scale: 2 }).notNull().default("0"),
+    notes: text("notas"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("ventas_campo_idx").on(t.farmId, t.date)],
+);
+
+/** Lluvias y heladas registradas en el campo (una fila por día). */
+export const weatherLogs = pgTable(
+  "registros_clima",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    date: date("fecha").notNull(),
+    rainMm: doublePrecision("lluvia_mm"),
+    frost: boolean("helada").notNull().default(false),
+    note: text("nota"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("clima_dia_unq").on(t.farmId, t.date)],
+);
+
+export type Paddock = typeof paddocks.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];
 export type User = typeof users.$inferSelect;
 export type Farm = typeof farms.$inferSelect;

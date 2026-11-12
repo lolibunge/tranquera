@@ -22,7 +22,7 @@ export default async function NewSessionPage({ params, searchParams }: PageProps
   return (
     <div className="flex flex-col gap-5">
       <BackLink href={`/c/${slug}/sanidad`} label="Volver" />
-      <PageTitle sub="Elegí qué vas a aplicar. Después pasás el bastón por cada animal y queda registrado.">Jornada de manga</PageTitle>
+      <PageTitle sub="Vacunas, tacto, inseminación, pesada, esquila… Elegí qué se hace y después pasás el bastón por cada animal.">Jornada de manga</PageTitle>
       <NewSessionForm slug={slug} options={options} species={species} control={control} today={todayISO()} />
     </div>
   );

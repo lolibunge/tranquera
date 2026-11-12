@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Field, Notice, SelectField } from "@/components/ui";
+import { Button, Field, Notice } from "@/components/ui";
+import { ControlSelect } from "@/components/control-select";
 import { CATALOG, type SpeciesKey } from "@/lib/catalogo";
 import { addDays } from "@/lib/dates";
 import { addHealth, type AnimalFormState } from "../actions";
@@ -19,6 +20,7 @@ export function HealthForm({ slug, animalId, species, today }: { slug: string; a
   const [date, setDate] = useState(today);
   const [next, setNext] = useState(() => suggest(controls[0]?.key ?? "otro", today));
   const interval = intervalOf(control);
+  const info = controls.find((c) => c.key === control);
   // Se cierra solo cuando guarda bien (un guardado posterior a abrirlo).
   const open = openedAt !== null && !(state.ok && (state.at ?? 0) > openedAt);
   const setOpen = (value: boolean) => setOpenedAt(value ? Date.now() : null);
@@ -28,7 +30,7 @@ export function HealthForm({ slug, animalId, species, today }: { slug: string; a
       <>
         {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}
         <Button type="button" onClick={() => setOpen(true)}>
-          Registrar sanidad
+          Registrar sanidad o manejo
         </Button>
       </>
     );
@@ -38,23 +40,29 @@ export function HealthForm({ slug, animalId, species, today }: { slug: string; a
     <form action={action} className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
       <input type="hidden" name="slug" value={slug} />
       <input type="hidden" name="animalId" value={animalId} />
-      <SelectField
-        id="control"
-        name="control"
-        label="Qué se hizo"
+      <ControlSelect
+        species={species}
         value={control}
-        onChange={(e) => {
-          setControl(e.target.value);
-          setNext(suggest(e.target.value, date));
+        onChange={(v) => {
+          setControl(v);
+          setNext(suggest(v, date));
         }}
-      >
-        {controls.map((c) => (
-          <option key={c.key} value={c.key}>
-            {c.label}
-          </option>
-        ))}
-        <option value="otro">Otro…</option>
-      </SelectField>
+      />
+      {info?.perAnimal?.type === "choice" ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-semibold">{info.perAnimal.label}</p>
+          <div className="flex flex-wrap gap-2" role="radiogroup">
+            {info.perAnimal.options.map((o) => (
+              <label key={o.value} className="cursor-pointer rounded-full bg-chip px-3.5 py-2 text-sm font-semibold has-checked:bg-brand has-checked:text-white">
+                <input type="radio" name="result" value={o.value} required className="sr-only" />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : info?.perAnimal?.type === "number" ? (
+        <Field id="result" name="result" label={`${info.perAnimal.label} (${info.perAnimal.unit})`} inputMode="decimal" required={!info.perAnimal.optional} />
+      ) : null}
       {control === "otro" ? <Field id="label" name="label" label="Descripción" required placeholder="Ej.: curación de herida" /> : null}
       <div className="grid grid-cols-2 gap-3">
         <Field id="date" name="date" type="date" label="Fecha" max={today} required value={date}
@@ -75,12 +83,12 @@ export function HealthForm({ slug, animalId, species, today }: { slug: string; a
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field id="product" name="product" label="Producto" />
-        <Field id="batch" name="batch" label="Serie" />
+        <Field id="product" name="product" label={info?.productLabel ?? "Producto"} key={`p-${control}`} />
+        <Field id="batch" name="batch" label={info?.batchLabel ?? "Serie"} key={`b-${control}`} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field id="dose" name="dose" label="Dosis" placeholder="5 ml" />
-        <Field id="vet" name="vet" label="Veterinario" />
+        <Field id="vet" name="vet" label={info?.vetLabel ?? "Veterinario"} key={`v-${control}`} />
       </div>
       <Field id="notes" name="notes" label="Notas" />
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}

@@ -5,6 +5,7 @@ import { getActiveSpecies } from "@/lib/farm-species";
 import { CATALOG, isSpeciesKey, normalizeTag } from "@/lib/catalogo";
 import { can } from "@/lib/roles";
 import { todayISO } from "@/lib/dates";
+import { paddockOptions } from "@/lib/paddocks";
 import { BackLink, PageTitle } from "@/components/ui";
 import { AnimalForm } from "../animal-form";
 
@@ -28,6 +29,7 @@ export default async function NewAnimalPage({ params, searchParams }: PageProps<
         slug={slug}
         today={todayISO()}
         speciesOptions={active}
+        paddocks={await paddockOptions(farm.id)}
         initial={{
           species,
           isLot: CATALOG[species].mode === "lote",
@@ -42,6 +44,7 @@ export default async function NewAnimalPage({ params, searchParams }: PageProps<
           originDetail: "",
           arrivedOn: "",
           notes: "",
+          paddockId: "",
         }}
       />
     </div>

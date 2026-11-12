@@ -4,13 +4,20 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Notice } from "@/components/ui";
 import { SyncStatus } from "@/components/sync-status";
-import { tagMatches } from "@/lib/catalogo";
+import { controlOf, tagMatches, type SpeciesKey } from "@/lib/catalogo";
 import { enqueue, flush, pending, removeFromQueue } from "@/lib/offline-queue";
 import { closeSession } from "../../actions";
+
+/** Hora de carga para ordenar la cola (fuera del componente: no es parte del render). */
+function timestamp() {
+  return Date.now();
+}
 
 type Animal = { id: string; tagVisual: string | null; tagRfid: string | null; title: string; sub: string };
 type Props = {
   slug: string;
+  species: SpeciesKey;
+  control: string;
   sessionId: string;
   closed: boolean;
   canWrite: boolean;
@@ -20,7 +27,7 @@ type Props = {
 };
 
 type Last =
-  | { kind: "ok"; animal: Animal; clientId: string }
+  | { kind: "ok"; animal: Animal; clientId: string; result?: string | null }
   | { kind: "repeat"; animal: Animal }
   | { kind: "missing"; read: string }
   | { kind: "many"; read: string; count: number };
@@ -30,13 +37,17 @@ type Last =
  * Busca en el padrón que ya está en el celular, así funciona sin señal;
  * cada registro va a la cola local y se sube solo.
  */
-export function MangaRunner({ slug, sessionId, closed, canWrite, animals, recorded: initial, newAnimalHref }: Props) {
+export function MangaRunner({ slug, species, control, sessionId, closed, canWrite, animals, recorded: initial, newAnimalHref }: Props) {
   const [done, setDone] = useState<Map<string, string | null>>(() => new Map(initial.map((r) => [r.animalId, r.clientId])));
   const [read, setRead] = useState("");
   const [last, setLast] = useState<Last | null>(null);
   const [showMissing, setShowMissing] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const byId = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals]);
+  const per = controlOf(species, control)?.perAnimal ?? null;
+  // Animal leído que espera su dato (resultado del tacto, kilos…).
+  const [asking, setAsking] = useState<Animal | null>(null);
+  const [amount, setAmount] = useState("");
 
   // Suma lo que quedó en la cola del celular (por si se recargó la página sin señal).
   useEffect(() => {
@@ -66,12 +77,24 @@ export function MangaRunner({ slug, sessionId, closed, canWrite, animals, record
     if (matches.length > 1) return setLast({ kind: "many", read: text, count: matches.length });
     const animal = matches[0];
     if (done.has(animal.id)) return setLast({ kind: "repeat", animal });
+    if (per) {
+      setLast(null);
+      setAmount("");
+      setAsking(animal);
+      return;
+    }
+    await save(animal, null);
+  }
+
+  async function save(animal: Animal, result: string | null) {
+    setAsking(null);
     const clientId = crypto.randomUUID();
     setDone((prev) => new Map(prev).set(animal.id, clientId));
-    setLast({ kind: "ok", animal, clientId });
+    setLast({ kind: "ok", animal, clientId, result });
     navigator.vibrate?.(60);
-    await enqueue({ slug, clientId, kind: "manga", payload: { sessionId, animalId: animal.id }, createdAt: Date.now() });
+    await enqueue({ slug, clientId, kind: "manga", payload: { sessionId, animalId: animal.id, result }, createdAt: timestamp() });
     flush(slug);
+    input.current?.focus();
   }
 
   async function undo(animal: Animal, clientId: string) {
@@ -83,7 +106,7 @@ export function MangaRunner({ slug, sessionId, closed, canWrite, animals, record
     setLast(null);
     const queued = (await pending(slug)).some((o) => o.clientId === clientId && o.kind === "manga");
     if (queued) await removeFromQueue(clientId);
-    else await enqueue({ slug, clientId, kind: "undo", payload: {}, createdAt: Date.now() });
+    else await enqueue({ slug, clientId, kind: "undo", payload: {}, createdAt: timestamp() });
     flush(slug);
     input.current?.focus();
   }
@@ -105,7 +128,10 @@ export function MangaRunner({ slug, sessionId, closed, canWrite, animals, record
             </svg>
           </span>
           <p className="mt-1 font-display text-[26px] font-bold tabular-nums">{last.animal.title}</p>
-          <p className="text-[15px] font-semibold text-ok-fg">{last.animal.sub ? `${last.animal.sub} · ` : ""}registrado</p>
+          <p className="text-[15px] font-semibold text-ok-fg">
+            {last.animal.sub ? `${last.animal.sub} · ` : ""}
+            {last.result ? `${last.result}${per?.type === "number" ? ` ${per.unit}` : ""} · ` : ""}registrado
+          </p>
           <button type="button" onClick={() => undo(last.animal, last.clientId)} className="mt-1 h-10 rounded-xl border border-ok-dot/40 bg-surface px-4 text-sm font-semibold text-ok-fg">
             Deshacer
           </button>
@@ -127,7 +153,55 @@ export function MangaRunner({ slug, sessionId, closed, canWrite, animals, record
         </Notice>
       ) : null}
 
-      {writable ? (
+      {asking && per ? (
+        <div className="flex flex-col gap-3 rounded-3xl border-2 border-brand bg-surface p-4" role="dialog" aria-label={per.label}>
+          <p className="text-center font-display text-2xl font-bold tabular-nums">{asking.title}</p>
+          {asking.sub ? <p className="-mt-2 text-center text-sm text-muted">{asking.sub}</p> : null}
+          {per.type === "choice" ? (
+            <div className="grid grid-cols-2 gap-2">
+              {per.options.map((o) => (
+                <button key={o.value} type="button" onClick={() => save(asking, o.value)} className="h-14 rounded-xl bg-brand text-base font-semibold text-white">
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = Number(amount.replace(",", "."));
+                if (n > 0) save(asking, String(n));
+              }}
+              className="flex flex-col gap-2"
+            >
+              <label htmlFor="amount" className="text-sm font-semibold">
+                {per.label} ({per.unit})
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="amount"
+                  autoFocus
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="h-13 min-w-0 flex-1 rounded-xl border border-line-strong bg-field px-4 text-center text-lg tabular-nums"
+                />
+                <Button type="submit">Guardar</Button>
+              </div>
+              {per.optional ? (
+                <button type="button" onClick={() => save(asking, null)} className="h-11 text-sm font-semibold text-brand">
+                  Guardar sin {per.label.toLowerCase()}
+                </button>
+              ) : null}
+            </form>
+          )}
+          <button type="button" onClick={() => setAsking(null)} className="h-10 text-sm font-semibold text-muted">
+            Cancelar
+          </button>
+        </div>
+      ) : null}
+
+      {writable && !asking ? (
         <form
           onSubmit={(e) => {
             e.preventDefault();

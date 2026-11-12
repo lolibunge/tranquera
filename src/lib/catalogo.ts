@@ -11,7 +11,27 @@
 export type Sex = "hembra" | "macho" | "castrado";
 
 export type Category = { value: string; label: string; sex: Sex };
-export type Control = { key: string; label: string; intervalDays: number | null; official?: boolean };
+/** Dato que se pide por animal en la jornada (ej. resultado del tacto, kilos). */
+export type PerAnimal =
+  | { type: "choice"; label: string; options: { value: string; label: string }[] }
+  | { type: "number"; label: string; unit: string; optional?: boolean };
+
+/**
+ * Un trabajo que se registra por animal: vacunas y controles (sanidad) o tareas de
+ * manejo y reproducción (tacto, inseminación, pesada, esquila…).
+ */
+export type Control = {
+  key: string;
+  label: string;
+  intervalDays: number | null;
+  official?: boolean;
+  group?: "sanidad" | "manejo";
+  perAnimal?: PerAnimal;
+  /** Para la jornada: qué significan producto y serie en este trabajo. */
+  productLabel?: string;
+  batchLabel?: string;
+  vetLabel?: string;
+};
 export type Orientation = { key: string; label: string };
 
 export type Species = {
@@ -34,6 +54,26 @@ export const SPECIES_KEYS = ["vacuno", "caballo", "ovino", "caprino", "porcino",
 export type SpeciesKey = (typeof SPECIES_KEYS)[number];
 
 const DESPARASITACION: Control = { key: "desparasitacion", label: "Desparasitación", intervalDays: 90 };
+
+const PESADA: Control = {
+  key: "pesada",
+  label: "Pesada",
+  intervalDays: null,
+  group: "manejo",
+  perAnimal: { type: "number", label: "Peso", unit: "kg" },
+};
+const PRENEZ = (key: string, label: string, extra: { value: string; label: string }[] = []): Control => ({
+  key,
+  label,
+  intervalDays: null,
+  group: "manejo",
+  perAnimal: {
+    type: "choice",
+    label: "Resultado",
+    options: [{ value: "preñada", label: "Preñada" }, ...extra, { value: "vacía", label: "Vacía" }, { value: "dudosa", label: "Dudosa" }],
+  },
+  vetLabel: "Veterinario",
+});
 
 export const CATALOG: Record<SpeciesKey, Species> = {
   vacuno: {
@@ -65,6 +105,11 @@ export const CATALOG: Record<SpeciesKey, Species> = {
       { key: "vacuna_brucelosis", label: "Vacuna brucelosis", intervalDays: null },
       { key: "bano_garrapata", label: "Baño o garrapaticida", intervalDays: 21 },
       DESPARASITACION,
+      { key: "inseminacion", label: "Inseminación", intervalDays: null, group: "manejo", productLabel: "Toro o pajuela", batchLabel: "Partida", vetLabel: "Inseminador" },
+      PRENEZ("tacto", "Tacto"),
+      PESADA,
+      { key: "destete", label: "Destete", intervalDays: null, group: "manejo" },
+      { key: "castracion", label: "Castración", intervalDays: null, group: "manejo" },
     ],
     adds: "Trazabilidad SNIG, aftosa, carbunco, clostridiosis, garrapata.",
   },
@@ -98,6 +143,9 @@ export const CATALOG: Record<SpeciesKey, Species> = {
       { key: "herraje", label: "Herraje o desvasado", intervalDays: 45 },
       { key: "dentista", label: "Dentista", intervalDays: 365 },
       DESPARASITACION,
+      { key: "servicio", label: "Servicio o inseminación", intervalDays: null, group: "manejo", productLabel: "Padrillo o pajuela" },
+      PRENEZ("ecografia", "Ecografía"),
+      PESADA,
     ],
     adds: "Herrero, anemia infecciosa, influenza, dentista.",
   },
@@ -125,9 +173,22 @@ export const CATALOG: Record<SpeciesKey, Species> = {
     controls: [
       { key: "bano_sarna", label: "Baño sarna o piojo", intervalDays: 365 },
       { key: "vacuna_clostridial", label: "Vacuna clostridial", intervalDays: 365 },
-      { key: "esquila", label: "Esquila", intervalDays: 365 },
       { key: "pietin", label: "Control de pietín", intervalDays: null },
       DESPARASITACION,
+      {
+        key: "esquila",
+        label: "Esquila",
+        intervalDays: 365,
+        group: "manejo",
+        perAnimal: { type: "number", label: "Lana", unit: "kg", optional: true },
+        productLabel: "Comparsa",
+        batchLabel: "Tipo de esquila",
+        vetLabel: "Responsable",
+      },
+      PRENEZ("ecografia", "Ecografía", [{ value: "mellizos", label: "Mellizos" }]),
+      { key: "encarnerada", label: "Encarnerada", intervalDays: null, group: "manejo", productLabel: "Carnero" },
+      { key: "senalada", label: "Señalada", intervalDays: null, group: "manejo" },
+      PESADA,
     ],
     adds: "Majada por lote o individual, esquila, baños, dosificaciones.",
   },
@@ -149,7 +210,7 @@ export const CATALOG: Record<SpeciesKey, Species> = {
       { value: "chivo", label: "Chivo", sex: "macho" },
     ],
     breeds: ["Saanen", "Anglo Nubian", "Boer", "Criolla", "Cruza"],
-    controls: [{ key: "vacuna_clostridial", label: "Vacuna clostridial", intervalDays: 365 }, DESPARASITACION],
+    controls: [{ key: "vacuna_clostridial", label: "Vacuna clostridial", intervalDays: 365 }, DESPARASITACION, PRENEZ("ecografia", "Ecografía", [{ value: "mellizos", label: "Mellizos" }]), PESADA],
     adds: "Lotes o individual, vacuna clostridial, dosificaciones.",
   },
   porcino: {
@@ -171,7 +232,7 @@ export const CATALOG: Record<SpeciesKey, Species> = {
       { value: "capon", label: "Capón", sex: "castrado" },
     ],
     breeds: ["Large White", "Landrace", "Duroc", "Pampa Rocha", "Hampshire", "Cruza"],
-    controls: [{ key: "vacunacion", label: "Vacunación", intervalDays: null }, DESPARASITACION],
+    controls: [{ key: "vacunacion", label: "Vacunación", intervalDays: null }, DESPARASITACION, { key: "servicio", label: "Servicio", intervalDays: null, group: "manejo", productLabel: "Padrillo" }, PESADA],
     adds: "Piara por lotes, reproducción, vacunas.",
   },
   ave: {
@@ -263,4 +324,8 @@ export function parseTagList(text: string) {
     else out.push(...chunk.split(/\s+/).map(normalizeTag).filter(Boolean));
   }
   return [...new Set(out)];
+}
+
+export function isHealthControl(c: Control) {
+  return (c.group ?? "sanidad") === "sanidad";
 }

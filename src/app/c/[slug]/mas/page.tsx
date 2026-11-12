@@ -23,6 +23,8 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
     can(role, "configurar") && { href: `${base}/configuracion`, label: "Datos del campo", sub: "Nombre, ubicación, hectáreas, DICOSE" },
     can(role, "configurar") && { href: `${base}/especies`, label: "Especies del campo", sub: "Qué animales tenés y para qué" },
     can(role, "configurar") && { href: `${base}/marca`, label: "Marca", sub: "Logo y colores" },
+    { href: `${base}/ventas`, label: "Ventas", sub: "Tropas vendidas y resumen del año" },
+    { href: `${base}/clima`, label: "Clima y lluvias", sub: "Pronóstico, lluvias y heladas" },
     { href: `${base}/usuarios`, label: "Equipo", sub: can(role, "usuarios") ? "Invitar y manejar roles" : "Quiénes están en el campo" },
     { href: "/cuenta", label: "Mi cuenta", sub: user.email ?? formatPhone(user.phone) },
     { href: "/campos?todos", label: "Cambiar de campo", sub: "Ver todos tus campos" },

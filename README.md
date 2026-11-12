@@ -37,8 +37,8 @@ Sin `RESEND_API_KEY`, el enlace para entrar se muestra en pantalla en desarrollo
 ## Etapas
 
 - **Etapa 0 · Base**: cuentas, campos, equipo y roles, datos del campo, marca, app instalable.
-- **Etapa 1 · Animales y Sanidad** (esta): especies del campo, padrón por especie, carga de varios por caravana, sanidad con vencimientos, campañas oficiales, jornada de manga que funciona sin señal.
-- **Etapa 2 · Potreros, Movimientos y Clima.**
+- **Etapa 1 · Animales y Sanidad**: especies del campo, padrón por especie, carga de varios por caravana, sanidad con vencimientos, campañas oficiales, jornada de manga que funciona sin señal.
+- **Etapa 2 · Potreros, Movimientos, Ventas y Clima** (esta): potreros con ocupación y descanso, mapa desde SVG (solo se guarda la geometría), mover animales, ventas por kilo o por cabeza, muertes con causa, pronóstico (Open-Meteo), lluvias y heladas. La jornada de manga sirve también para tacto, inseminación, pesada y esquila, con un dato por animal.
 - **Etapa 3 · Stock, Calendario, Propietarios y asistente inicial.**
 - **Etapa 4 · Migración de La Hidalguía** desde campo-admin.
 
