@@ -12,6 +12,7 @@ import { can, isRole, ROLE_LABEL, type Permission, type Role } from "@/lib/roles
 import { contrastWithWhite } from "@/lib/color";
 import { CATALOG, SPECIES_KEYS } from "@/lib/catalogo";
 import { createAccessCode } from "@/lib/access-codes";
+import { clearDemo, loadDemo } from "@/lib/demo";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 
 export type ActionState = { error?: string; ok?: string; link?: string; at?: number };
@@ -299,4 +300,22 @@ export async function newAccessCode(_prev: CodeState, formData: FormData): Promi
 
 async function activationLink(phone: string) {
   return `${await appUrl()}/activar?cel=${encodeURIComponent(phone)}`;
+}
+
+export async function loadDemoData(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { access, denied } = await guard(formData, "dueños");
+  if (denied) return { error: "Solo un dueño puede cargar datos de prueba." };
+  const result = await loadDemo(access.farm.id, access.user.id);
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+  return result.already
+    ? { error: "Los datos de prueba ya están cargados. Borralos primero si querés cargarlos de nuevo." }
+    : { ok: `Listo: ${result.created} vacunos de prueba con sanidad y una jornada de manga abierta.`, at: Date.now() };
+}
+
+export async function clearDemoData(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { access, denied } = await guard(formData, "dueños");
+  if (denied) return { error: "Solo un dueño puede borrar datos de prueba." };
+  const removed = await clearDemo(access.farm.id);
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+  return { ok: removed ? `Se borraron ${removed} animales de prueba y su sanidad.` : "No había datos de prueba.", at: Date.now() };
 }

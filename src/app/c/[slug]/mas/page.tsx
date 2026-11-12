@@ -4,6 +4,8 @@ import Link from "next/link";
 import { getFarmAccess } from "@/lib/farms";
 import { can, ROLE_LABEL } from "@/lib/roles";
 import { PageTitle } from "@/components/ui";
+import { hasDemo } from "@/lib/demo";
+import { DemoData } from "./demo-data";
 import { signOut } from "../../../(acceso)/actions";
 
 export const metadata: Metadata = { title: "Más" };
@@ -39,6 +41,7 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
           </li>
         ))}
       </ul>
+      {can(role, "dueños") ? <DemoData slug={slug} hasDemo={await hasDemo(farm.id)} /> : null}
       <form action={signOut}>
         <button type="submit" className="h-13 w-full rounded-xl border border-line-strong bg-surface text-base font-semibold text-ink hover:bg-chip">
           Salir
