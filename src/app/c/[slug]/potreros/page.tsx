@@ -33,6 +33,11 @@ export default async function PaddocksPage({ params }: PageProps<"/c/[slug]/potr
       {load && paddocks.length ? <ButtonLink href={`/c/${slug}/mover`}>Mover animales</ButtonLink> : null}
 
       {map ? <FarmMapView map={map} paddocks={paddocks} slug={slug} /> : null}
+      {configure && map?.shapes.some((sh) => !sh.name && !sh.background) ? (
+        <Link href={`/c/${slug}/potreros/mapa/nombrar`} className="inline-flex h-13 items-center justify-center rounded-xl border border-line-strong bg-surface text-base font-semibold">
+          Nombrar divisiones del mapa ({map.shapes.filter((sh) => !sh.name && !sh.background).length} sin nombre)
+        </Link>
+      ) : null}
       {configure ? (
         <Link href={`/c/${slug}/potreros/mapa`} className="self-start text-[15px] font-semibold text-brand">
           {map ? "Cambiar el mapa" : "Subir el mapa del campo (SVG)"}

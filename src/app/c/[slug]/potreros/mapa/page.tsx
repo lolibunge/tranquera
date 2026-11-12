@@ -6,6 +6,7 @@ import { can } from "@/lib/roles";
 import { BackLink, PageTitle } from "@/components/ui";
 import { FarmMapView } from "@/components/farm-map";
 import { MapUpload } from "./upload";
+import Link from "next/link";
 import { deleteMapAction } from "../actions";
 
 export const metadata: Metadata = { title: "Mapa del campo" };
@@ -23,12 +24,22 @@ export default async function MapPage({ params }: PageProps<"/c/[slug]/potreros/
       </PageTitle>
       <div className="flex flex-col gap-2 rounded-2xl bg-info-bg px-4 py-3 text-sm leading-relaxed text-info-fg">
         <p className="font-semibold">Cómo preparar el SVG</p>
-        <p>Dibujá cada potrero como una forma cerrada y ponele de nombre el del potrero (en Illustrator, el nombre de la capa o del objeto; en Inkscape, la etiqueta). Las formas sin nombre quedan como fondo.</p>
+        <p>Cada potrero tiene que ser una forma cerrada. Los nombres se toman del nombre de la forma (capa u objeto en Illustrator, etiqueta en Inkscape) o de un texto escrito adentro de la división.</p>
+        <p>Si el mapa no trae nombres, después de subirlo tocás cada división y le ponés el nombre.</p>
         <p>Si ya hay potreros con ese nombre, se enlazan; los nuevos se crean solos.</p>
       </div>
       <MapUpload slug={slug} />
       {map ? (
         <>
+          {map.shapes.some((sh) => !sh.name && !sh.background) ? (
+            <Link href={`/c/${slug}/potreros/mapa/nombrar`} className="inline-flex h-13 items-center justify-center rounded-xl bg-brand text-base font-semibold text-white">
+              Nombrar las divisiones ({map.shapes.filter((sh) => !sh.name && !sh.background).length} sin nombre)
+            </Link>
+          ) : (
+            <Link href={`/c/${slug}/potreros/mapa/nombrar`} className="self-start text-[15px] font-semibold text-brand">
+              Cambiar nombres en el mapa
+            </Link>
+          )}
           <FarmMapView map={map} paddocks={paddocks} slug={slug} />
           <form action={deleteMapAction}>
             <input type="hidden" name="slug" value={slug} />

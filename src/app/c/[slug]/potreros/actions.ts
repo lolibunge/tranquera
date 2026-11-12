@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getFarmAccess } from "@/lib/farms";
 import { can, type Permission } from "@/lib/roles";
-import { archivePaddock, deleteMap, moveAnimals, saveMap, savePaddock } from "@/lib/paddocks";
+import { archivePaddock, deleteMap, moveAnimals, nameShape, saveMap, savePaddock } from "@/lib/paddocks";
 
 export type PaddockState = { error?: string; ok?: string; at?: number };
 
@@ -47,9 +47,9 @@ export async function uploadMapAction(_prev: PaddockState, formData: FormData): 
   if (!result.ok) return { error: result.error };
   revalidatePath(`/c/${access.farm.slug}`, "layout");
   const parts = [
-    `Mapa guardado con ${result.names.length} potreros con nombre.`,
+    `Mapa guardado con ${result.names.length} potreros con nombre${result.fromText ? ` (${result.fromText} tomados de los textos del mapa)` : ""}.`,
     result.created ? `Se crearon ${result.created} potreros nuevos.` : "",
-    result.unnamed ? `${result.unnamed} formas sin nombre quedaron como fondo.` : "",
+    result.unnamed ? `Quedan ${result.unnamed} divisiones sin nombre: tocá "Nombrar las divisiones".` : "",
   ];
   return { ok: parts.filter(Boolean).join(" "), at: Date.now() };
 }
@@ -77,4 +77,16 @@ export async function moveAction(_prev: PaddockState, formData: FormData): Promi
     ok: result.moved ? `Listo: ${result.moved} ${result.moved === 1 ? "animal movido" : "animales movidos"}.` : "Ya estaban en ese potrero.",
     at: Date.now(),
   };
+}
+
+export async function nameShapeAction(_prev: PaddockState, formData: FormData): Promise<PaddockState> {
+  const { access, denied } = await guard(formData, "configurar");
+  if (denied) return { error: denied };
+  const result = await nameShape(access.farm.id, Number(formData.get("index")), {
+    name: text(formData, "name") || null,
+    background: formData.get("background") === "1",
+  });
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+  return { ok: formData.get("background") === "1" ? "Marcada como fondo." : `Guardado: ${text(formData, "name")}.`, at: Date.now() };
 }

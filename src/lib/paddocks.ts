@@ -158,7 +158,7 @@ export async function saveMap(farmId: string, svgText: string) {
       }
     }
   });
-  return { ok: true as const, created, names: parsed.names, unnamed: parsed.map.shapes.filter((s) => !s.name).length };
+  return { ok: true as const, created, names: parsed.names, fromText: parsed.fromText, unnamed: parsed.map.shapes.filter((s) => !s.name).length };
 }
 
 export async function getMap(farmId: string): Promise<FarmMap | null> {
@@ -235,4 +235,51 @@ export async function animalMovements(farmId: string, animalId: string) {
     .where(and(eq(schema.movements.farmId, farmId), eq(schema.movements.animalId, animalId)))
     .orderBy(sql`${schema.movements.date} desc, ${schema.movements.createdAt} desc`)
     .limit(50);
+}
+
+/**
+ * Nombra una forma del mapa (o la marca como "no es potrero").
+ * Si el nombre es nuevo crea el potrero; si ya existe, lo enlaza.
+ */
+export async function nameShape(farmId: string, index: number, input: { name: string | null; background: boolean }) {
+  const map = await getMap(farmId);
+  if (!map) return { ok: false as const, error: "El campo no tiene mapa." };
+  const shape = map.shapes[index];
+  if (!shape) return { ok: false as const, error: "Esa división ya no está en el mapa." };
+  const name = input.name?.trim().replace(/\s+/g, " ") ?? "";
+  if (!input.background && (name.length < 1 || name.length > 60)) return { ok: false as const, error: "Escribí el nombre del potrero." };
+
+  const previous = shape.name;
+  shape.name = input.background ? null : name;
+  shape.background = input.background || undefined;
+
+  await db.transaction(async (tx) => {
+    await tx.update(schema.farmMaps).set({ svg: JSON.stringify(map), updatedAt: new Date() }).where(eq(schema.farmMaps.farmId, farmId));
+    if (!input.background) {
+      const [found] = await tx
+        .select({ id: schema.paddocks.id })
+        .from(schema.paddocks)
+        .where(and(eq(schema.paddocks.farmId, farmId), sql`lower(${schema.paddocks.name}) = lower(${name})`))
+        .limit(1);
+      const onlyUse = previous && !map.shapes.some((s, i) => i !== index && s.name?.toLowerCase() === previous.toLowerCase());
+      if (found) await tx.update(schema.paddocks).set({ svgId: name, active: true, updatedAt: new Date() }).where(eq(schema.paddocks.id, found.id));
+      else if (previous && onlyUse) {
+        // Cambio de nombre: se renombra el mismo potrero (conserva animales e historial).
+        const renamed = await tx
+          .update(schema.paddocks)
+          .set({ name, svgId: name, updatedAt: new Date() })
+          .where(and(eq(schema.paddocks.farmId, farmId), sql`lower(${schema.paddocks.svgId}) = lower(${previous})`))
+          .returning({ id: schema.paddocks.id });
+        if (!renamed.length) await tx.insert(schema.paddocks).values({ farmId, name, svgId: name });
+      } else await tx.insert(schema.paddocks).values({ farmId, name, svgId: name });
+    }
+    // El nombre anterior, si ya ninguna forma lo usa, deja de estar en el mapa (el potrero queda).
+    if (previous && previous.toLowerCase() !== name.toLowerCase() && !map.shapes.some((s) => s.name?.toLowerCase() === previous.toLowerCase())) {
+      await tx
+        .update(schema.paddocks)
+        .set({ svgId: null, updatedAt: new Date() })
+        .where(and(eq(schema.paddocks.farmId, farmId), sql`lower(${schema.paddocks.svgId}) = lower(${previous})`));
+    }
+  });
+  return { ok: true as const };
 }

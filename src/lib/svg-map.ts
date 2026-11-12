@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { outline, pointInPolygon } from "./svg-geometry";
 
 /**
  * Lee el SVG del mapa que sube el usuario y se queda solo con la geometría:
@@ -9,7 +10,7 @@ import { XMLParser } from "fast-xml-parser";
  * o <title> de la forma o de su grupo. Los nombres genéricos ("path12", "Capa_1") se ignoran.
  */
 
-export type MapShape = { tag: Tag; attrs: Record<string, string>; transform: string; name: string | null };
+export type MapShape = { tag: Tag; attrs: Record<string, string>; transform: string; name: string | null; background?: boolean };
 export type FarmMap = { viewBox: string; shapes: MapShape[] };
 
 const TAGS = ["path", "polygon", "polyline", "rect", "circle", "ellipse"] as const;
@@ -54,7 +55,7 @@ function nameOf(el: Record<string, unknown>) {
   );
 }
 
-export function parseSvgMap(text: string): { ok: true; map: FarmMap; names: string[] } | { ok: false; error: string } {
+export function parseSvgMap(text: string): { ok: true; map: FarmMap; names: string[]; fromText: number } | { ok: false; error: string } {
   if (text.length > 2_000_000) return { ok: false, error: "El mapa pesa más de 2 MB. Simplificalo o exportalo más liviano." };
   if (!/<svg[\s>]/i.test(text)) return { ok: false, error: "El archivo no parece un SVG." };
   let doc: Record<string, unknown>;
@@ -64,7 +65,7 @@ export function parseSvgMap(text: string): { ok: true; map: FarmMap; names: stri
       attributeNamePrefix: "@_",
       processEntities: false,
       allowBooleanAttributes: true,
-      isArray: (name) => (TAGS as readonly string[]).includes(name) || name === "g" || name === "title",
+      isArray: (name) => (TAGS as readonly string[]).includes(name) || ["g", "title", "text", "tspan"].includes(name),
     }).parse(text) as Record<string, unknown>;
   } catch {
     return { ok: false, error: "No pudimos leer el SVG. Probá exportarlo de nuevo." };
@@ -81,9 +82,18 @@ export function parseSvgMap(text: string): { ok: true; map: FarmMap; names: stri
   if (!viewBox) return { ok: false, error: "Al SVG le falta el tamaño (viewBox). Exportalo con tamaño de mesa de trabajo." };
 
   const shapes: MapShape[] = [];
+  const texts: { chain: string; x: number; y: number; text: string }[] = [];
   const walk = (node: Record<string, unknown>, transform: string, inherited: string | null) => {
     const own = typeof node["@_transform"] === "string" && SAFE_TRANSFORM.test(node["@_transform"] as string) ? (node["@_transform"] as string) : "";
     const chain = [transform, own].filter(Boolean).join(" ");
+    for (const t of (node.text as Record<string, unknown>[] | undefined) ?? []) {
+      const content = collectText(t).replace(/\s+/g, " ").trim();
+      if (!content || content.length > 60) continue;
+      const [tx, ty] = translationOf(String(t["@_transform"] ?? ""));
+      const x = parseFloat(String(t["@_x"] ?? "0").split(/[\s,]+/)[0]) || 0;
+      const y = parseFloat(String(t["@_y"] ?? "0").split(/[\s,]+/)[0]) || 0;
+      texts.push({ chain, x: x + tx, y: y + ty, text: content });
+    }
     for (const tag of TAGS) {
       const list = node[tag] as Record<string, unknown>[] | undefined;
       for (const el of list ?? []) {
@@ -107,6 +117,45 @@ export function parseSvgMap(text: string): { ok: true; map: FarmMap; names: stri
   if (!shapes.length) return { ok: false, error: "El SVG no tiene formas dibujadas." };
   if (shapes.length > 3000) return { ok: false, error: "El mapa tiene demasiadas formas. Simplificalo." };
 
+  // Formas sin nombre: si adentro hay un único texto (ej. "Potrero 3" escrito en el mapa), ese es su nombre.
+  let fromText = 0;
+  for (const shape of shapes) {
+    if (shape.name) continue;
+    const poly = outline(shape);
+    if (!poly) continue;
+    const inside = texts.filter((t) => t.chain === shape.transform && pointInPolygon(t.x, t.y, poly));
+    const label = inside.length === 1 ? cleanName(inside[0].text) : null;
+    if (label) {
+      shape.name = label;
+      fromText++;
+    }
+  }
+
   const names = [...new Set(shapes.map((s) => s.name).filter(Boolean) as string[])];
-  return { ok: true, map: { viewBox, shapes }, names };
+  return { ok: true, map: { viewBox, shapes }, names, fromText };
 }
+
+function collectText(node: unknown): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (!node || typeof node !== "object") return "";
+  const o = node as Record<string, unknown>;
+  const own = "#text" in o ? String(o["#text"]) : "";
+  const spans = ((o.tspan as unknown[]) ?? []).map(collectText).join(" ");
+  return `${own} ${spans}`;
+}
+
+/** Traslación de un transform simple: translate(x y) o matrix(1 0 0 1 x y) (así exporta Illustrator). */
+function translationOf(transform: string): [number, number] {
+  const m = transform.match(/matrix\(([^)]+)\)/);
+  if (m) {
+    const v = m[1].split(/[\s,]+/).map(Number);
+    if (v.length === 6) return [v[4] || 0, v[5] || 0];
+  }
+  const t = transform.match(/translate\(([^)]+)\)/);
+  if (t) {
+    const v = t[1].split(/[\s,]+/).map(Number);
+    return [v[0] || 0, v[1] || 0];
+  }
+  return [0, 0];
+}
+
