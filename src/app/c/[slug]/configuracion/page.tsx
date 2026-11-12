@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getFarmAccess } from "@/lib/farms";
+import { backHref, getFarmAccess } from "@/lib/farms";
 import { can } from "@/lib/roles";
 import { BackLink, PageTitle } from "@/components/ui";
 import { FarmInfoForm } from "./form";
@@ -13,7 +13,7 @@ export default async function FarmInfoPage({ params, searchParams }: PageProps<"
   if (!can(role, "configurar")) notFound();
   return (
     <div className="flex flex-col gap-6">
-      <BackLink href={(await searchParams).desde === "inicio" ? `/c/${slug}` : `/c/${slug}/mas`} />
+      <BackLink href={backHref(slug, (await searchParams).desde)} />
       <PageTitle>Datos del campo</PageTitle>
       <FarmInfoForm
         slug={slug}

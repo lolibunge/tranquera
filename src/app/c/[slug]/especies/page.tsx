@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getFarmAccess } from "@/lib/farms";
+import { backHref, getFarmAccess } from "@/lib/farms";
 import { getFarmSpecies } from "@/lib/farm-species";
 import { can } from "@/lib/roles";
 import { BackLink, PageTitle } from "@/components/ui";
@@ -13,7 +13,7 @@ export default async function SpeciesPage({ params, searchParams }: PageProps<"/
   const { farm, role } = await getFarmAccess(slug);
   if (!can(role, "configurar")) notFound();
   const species = await getFarmSpecies(farm.id);
-  const from = (await searchParams).desde === "inicio" ? `/c/${slug}` : `/c/${slug}/mas`;
+  const from = backHref(slug, (await searchParams).desde);
   return (
     <div className="flex flex-col gap-6">
       <BackLink href={from} />

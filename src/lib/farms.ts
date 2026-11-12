@@ -78,3 +78,10 @@ export async function uniqueFarmSlug(name: string) {
   }
   return `${base}-${Date.now().toString(36)}`;
 }
+
+/** A dónde vuelve la flecha según de dónde se vino (?desde=inicio|asistente). */
+export function backHref(slug: string, desde: unknown, fallback = `/c/${slug}/mas`) {
+  if (desde === "inicio") return `/c/${slug}`;
+  if (desde === "asistente") return `/c/${slug}/asistente`;
+  return fallback;
+}

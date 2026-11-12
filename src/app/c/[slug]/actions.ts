@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -331,4 +332,14 @@ export async function hideSetup(formData: FormData) {
     secure: process.env.NODE_ENV === "production",
   });
   revalidatePath(`/c/${access.farm.slug}`);
+}
+
+/** Cierra el asistente de primeros pasos (lo que falte queda en Más). */
+export async function finishSetup(formData: FormData) {
+  const access = await getFarmAccess(String(formData.get("slug") ?? ""));
+  if (can(access.role, "configurar")) {
+    await db.update(schema.farms).set({ setupDoneAt: new Date(), updatedAt: new Date() }).where(eq(schema.farms.id, access.farm.id));
+    revalidatePath(`/c/${access.farm.slug}`, "layout");
+  }
+  redirect(`/c/${access.farm.slug}`);
 }

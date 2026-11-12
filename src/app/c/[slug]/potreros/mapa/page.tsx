@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getFarmAccess } from "@/lib/farms";
+import { backHref, getFarmAccess } from "@/lib/farms";
 import { getMap, listPaddocks } from "@/lib/paddocks";
 import { can } from "@/lib/roles";
 import { BackLink, PageTitle } from "@/components/ui";
@@ -11,15 +11,16 @@ import { deleteMapAction } from "../actions";
 
 export const metadata: Metadata = { title: "Mapa del campo" };
 
-export default async function MapPage({ params }: PageProps<"/c/[slug]/potreros/mapa">) {
+export default async function MapPage({ params, searchParams }: PageProps<"/c/[slug]/potreros/mapa">) {
   const { slug } = await params;
+  const back = backHref(slug, (await searchParams).desde, `/c/${slug}/potreros`);
   const { farm, role } = await getFarmAccess(slug);
   if (!can(role, "configurar")) notFound();
   const [map, paddocks] = await Promise.all([getMap(farm.id), listPaddocks(farm.id)]);
   const unmapped = paddocks.filter((p) => !p.svgId);
   return (
     <div className="flex flex-col gap-5">
-      <BackLink href={`/c/${slug}/potreros`} label="Volver" />
+      <BackLink href={back} label="Volver" />
       <PageTitle sub="Subí el mapa en SVG (de Illustrator, Inkscape, Figma o Google Earth convertido). Cada forma con nombre se vuelve un potrero.">
         Mapa del campo
       </PageTitle>

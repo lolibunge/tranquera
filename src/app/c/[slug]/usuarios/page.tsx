@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { getFarmAccess } from "@/lib/farms";
+import { backHref, getFarmAccess } from "@/lib/farms";
 import { can, ROLE_LABEL, ROLES } from "@/lib/roles";
 import { formatPhone } from "@/lib/phone";
 import { BackLink, Card, PageTitle, SectionTitle, StatusPill } from "@/components/ui";
@@ -43,7 +43,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<"/c/[
 
   return (
     <div className="flex flex-col gap-6">
-      <BackLink href={(await searchParams).desde === "inicio" ? `/c/${slug}` : `/c/${slug}/mas`} />
+      <BackLink href={backHref(slug, (await searchParams).desde)} />
       <PageTitle sub={manage ? "Invitá a quienes trabajan en el campo y elegí qué puede hacer cada uno." : undefined}>Equipo</PageTitle>
 
       {manage ? (

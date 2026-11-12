@@ -20,6 +20,7 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
     ? await pendingSetupSteps(slug, farm, (await getActiveSpecies(farm.id)).length > 0, "mas")
     : [];
   const items = [
+    can(role, "configurar") && pending.length > 0 && { href: `${base}/asistente`, label: "Primeros pasos", sub: "Datos, especies, potreros y equipo" },
     can(role, "configurar") && { href: `${base}/configuracion`, label: "Datos del campo", sub: "Nombre, ubicación, hectáreas, DICOSE" },
     can(role, "configurar") && { href: `${base}/especies`, label: "Especies del campo", sub: "Qué animales tenés y para qué" },
     can(role, "configurar") && { href: `${base}/marca`, label: "Marca", sub: "Logo y colores" },

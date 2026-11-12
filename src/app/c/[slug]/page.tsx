@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { getFarmAccess } from "@/lib/farms";
 import { can } from "@/lib/roles";
@@ -21,6 +22,8 @@ const DATE = new Intl.DateTimeFormat("es-UY", { weekday: "long", day: "numeric",
 export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
   const { slug } = await params;
   const { farm, role } = await getFarmAccess(slug);
+  // Campo recién creado: primero el asistente (se puede saltear).
+  if (!farm.setupDoneAt && can(role, "configurar")) redirect(`/c/${slug}/asistente`);
   const today = DATE.format(new Date());
   const [species, forecast] = await Promise.all([getActiveSpecies(farm.id), getForecast(farm.latitude, farm.longitude)]);
   const frost = frostDays(forecast);
