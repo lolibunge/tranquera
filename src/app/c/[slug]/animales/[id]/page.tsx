@@ -59,7 +59,7 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
     .join(" · ");
   const canLoad = can(role, "cargar");
   const canHealth = can(role, "sanidad");
-  const [plan, supplies] = a.isLot || a.status !== "activo" ? [[], []] : await Promise.all([animalPlan(farm.id, a.id), listSupplies(farm.id)]);
+  const [plan, supplies] = a.status !== "activo" ? [[], []] : await Promise.all([animalPlan(farm.id, a.id), listSupplies(farm.id)]);
   const feedSupplies = [...supplies].sort((x, y) => Number(y.category === "alimento") - Number(x.category === "alimento") || x.name.localeCompare(y.name, "es"));
   const statusLabel = { vendido: "Vendido", muerto: "Muerto", baja: "Dado de baja", activo: "" } as const;
 
@@ -163,7 +163,7 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
           <div className="flex items-center justify-between">
             <SectionTitle>Ración</SectionTitle>
             {plan.length ? (
-              <Link href={`/c/${slug}/racion`} className="py-1 text-[15px] font-semibold text-brand">
+              <Link href={`/c/${slug}/racion?e=${a.species}`} className="py-1 text-[15px] font-semibold text-brand">
                 Ración de hoy
               </Link>
             ) : null}
@@ -175,7 +175,8 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
                   <span className="flex flex-col">
                     <span className="text-[15px] font-semibold">{slotLabel(p.slot)}</span>
                     <span className="text-[13px] text-muted">
-                      {formatQty(p.quantity)} {unitFor(p.quantity, p.unit)} de {p.supply}
+                      {formatQty(p.quantity)} {unitFor(p.quantity, p.unit)}
+                      {a.isLot ? " por cabeza" : ""} de {p.supply}
                     </span>
                   </span>
                   {canLoad ? (
@@ -197,7 +198,7 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
             <details className="rounded-2xl border border-line bg-surface p-4">
               <summary className="cursor-pointer text-[15px] font-semibold">Agregar a la ración</summary>
               <div className="mt-4">
-                <PlanForm slug={slug} animalId={a.id} supplies={feedSupplies.map((s) => ({ id: s.id, name: s.name, unit: s.unit }))} slots={SLOTS} />
+                <PlanForm slug={slug} animalIds={[a.id]} perHead={a.isLot} supplies={feedSupplies.map((s) => ({ id: s.id, name: s.name, unit: s.unit }))} slots={SLOTS} />
               </div>
             </details>
           ) : null}

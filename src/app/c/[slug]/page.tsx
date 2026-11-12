@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { hasPlans, roundsOn, SLOTS } from "@/lib/feeding";
+import { roundsOn, SLOTS, speciesWithPlans } from "@/lib/feeding";
+import { CATALOG, isSpeciesKey } from "@/lib/catalogo";
 import { todayISO } from "@/lib/dates";
 import type { Metadata } from "next";
 import { getFarmAccess } from "@/lib/farms";
@@ -31,7 +32,8 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
   const frost = frostDays(forecast);
   const now = forecast?.[0];
   const hasSpecies = species.length > 0;
-  const feeding = (await hasPlans(farm.id)) ? await roundsOn(farm.id, todayISO()) : null;
+  const feedSpecies = (await speciesWithPlans(farm.id)).filter(isSpeciesKey);
+  const feedRounds = feedSpecies.length ? await roundsOn(farm.id, todayISO()) : [];
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center gap-3">
@@ -58,16 +60,22 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
         </Link>
       ) : null}
 
-      {feeding ? (
-        <Link href={`/c/${slug}/racion`} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-          <span className="flex flex-col">
-            <span className="text-[15px] font-semibold">Ración de hoy</span>
-            <span className="text-[13px] text-muted">
-              {SLOTS.map((s) => `${s.label} ${feeding.some((r) => r.slot === s.key) ? "✓" : "pendiente"}`).join(" · ")}
-            </span>
-          </span>
-          <span aria-hidden="true" className="text-muted">›</span>
-        </Link>
+      {feedSpecies.length ? (
+        <ul className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+          {feedSpecies.map((k) => (
+            <li key={k} className="border-b border-chip last:border-b-0">
+              <Link href={`/c/${slug}/racion?e=${k}`} className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="flex flex-col">
+                  <span className="text-[15px] font-semibold">Ración de {CATALOG[k].plural.toLowerCase()}</span>
+                  <span className="text-[13px] text-muted">
+                    {SLOTS.map((s) => `${s.label} ${feedRounds.some((r) => r.slot === s.key && r.species === k) ? "✓" : "pendiente"}`).join(" · ")}
+                  </span>
+                </span>
+                <span aria-hidden="true" className="text-muted">›</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       <section className="flex flex-col gap-3">

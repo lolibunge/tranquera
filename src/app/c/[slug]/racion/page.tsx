@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getFarmAccess } from "@/lib/farms";
-import { roundsOn, SLOTS, slotLabel, slotPlan, totals, type Slot } from "@/lib/feeding";
+import { roundsOn, SLOTS, slotLabel, slotPlan, speciesWithPlans, totals, type Slot } from "@/lib/feeding";
+import { getActiveSpecies } from "@/lib/farm-species";
+import { CATALOG, isSpeciesKey } from "@/lib/catalogo";
+import { SpeciesTabs } from "./species-tabs";
 import { listSupplies, formatQty, unitFor } from "@/lib/stock";
 import { todayISO } from "@/lib/dates";
 import { can } from "@/lib/roles";
@@ -22,16 +25,23 @@ export default async function FeedPage({ params, searchParams }: PageProps<"/c/[
   const { farm, role } = await getFarmAccess(slug);
   const slot = (SLOTS.some((s) => s.key === sp.turno) ? sp.turno : currentSlot()) as Slot;
   const today = todayISO();
-  const [animals, rounds, stock] = await Promise.all([slotPlan(farm.id, slot), roundsOn(farm.id, today), listSupplies(farm.id)]);
+  // Especies: primero las que ya tienen ración, después el resto de las del campo.
+  const [withPlans, active] = await Promise.all([speciesWithPlans(farm.id), getActiveSpecies(farm.id)]);
+  const speciesList = [...new Set([...withPlans, ...active.map((x) => x.key)])].filter(isSpeciesKey);
+  const species = typeof sp.e === "string" && speciesList.includes(sp.e as never) ? sp.e : (speciesList[0] ?? "caballo");
+  const plural = isSpeciesKey(species) ? CATALOG[species].plural.toLowerCase() : "animales";
+  const [animals, rounds, stock] = await Promise.all([slotPlan(farm.id, slot, species), roundsOn(farm.id, today, species), listSupplies(farm.id)]);
   const done = rounds.find((r) => r.slot === slot);
   const need = totals(animals);
   const short = need.filter((n) => (stock.find((s) => s.id === n.id)?.stock ?? 0) < n.quantity);
   const base = `/c/${slug}/racion`;
+  const q = (k: Record<string, string>) => `${base}?${new URLSearchParams({ e: species, turno: slot, ...k })}`;
 
   return (
     <div className="flex flex-col gap-5">
       <BackLink href={`/c/${slug}`} label="Volver" />
       <PageTitle sub="Lo que come cada animal en cada turno. Al darla, se descuenta del stock.">Ración de hoy</PageTitle>
+      <SpeciesTabs species={speciesList} current={species} href={(k) => q({ e: k })} />
 
       <div role="tablist" aria-label="Turno" className="grid grid-cols-3 gap-1 rounded-xl bg-chip p-1">
         {SLOTS.map((s) => {
@@ -41,7 +51,7 @@ export default async function FeedPage({ params, searchParams }: PageProps<"/c/[
               key={s.key}
               role="tab"
               aria-selected={s.key === slot}
-              href={`${base}?turno=${s.key}`}
+              href={q({ turno: s.key })}
               className={`flex h-11 items-center justify-center gap-1.5 rounded-lg text-[15px] font-semibold ${s.key === slot ? "bg-surface shadow-sm" : "text-muted"}`}
             >
               {given ? (
@@ -56,14 +66,16 @@ export default async function FeedPage({ params, searchParams }: PageProps<"/c/[
       </div>
 
       {!animals.length ? (
-        <Card className="text-sm leading-relaxed text-ink-2">
-          Nadie tiene ración de la {slotLabel(slot).toLowerCase()}. Se arma desde la ficha de cada animal, en la sección Ración. Primero cargá la ración y los fardos en{" "}
-          <Link href={`/c/${slug}/stock`} className="font-semibold text-brand">Stock</Link>.
+        <Card className="flex flex-col gap-2 text-sm leading-relaxed text-ink-2">
+          <p>
+            Ningún {isSpeciesKey(species) ? CATALOG[species].label.toLowerCase() : "animal"} tiene ración de la {slotLabel(slot).toLowerCase()}.
+          </p>
+          <p>Tocá «Armar la ración» para elegir los animales y qué comen. Lo que comen tiene que estar cargado en Stock (ración, fardos, sales…).</p>
         </Card>
       ) : done ? (
         <Card className="flex flex-col gap-3">
           <p className="text-base font-semibold text-ok-fg">
-            Ración de la {slotLabel(slot).toLowerCase()} dada a {done.animals} animal{done.animals === 1 ? "" : "es"}
+            Ración de la {slotLabel(slot).toLowerCase()} dada a {done.animals} {done.animals === 1 ? "animal" : plural}
           </p>
           {done.skipped ? <p className="text-sm text-ink-2">No comieron: {done.skipped}</p> : null}
           {can(role, "cargar") ? (
@@ -92,9 +104,19 @@ export default async function FeedPage({ params, searchParams }: PageProps<"/c/[
             </ul>
           </Card>
           {short.length ? <Notice tone="warn">No alcanza el stock de {short.map((s) => s.supply).join(", ")}. Igual se puede registrar; el stock queda en negativo hasta que cargues la entrada.</Notice> : null}
-          {can(role, "cargar") ? <RoundForm slug={slug} slot={slot} date={today} animals={animals} slotName={slotLabel(slot)} /> : null}
+          {can(role, "cargar") ? <RoundForm slug={slug} slot={slot} species={species} date={today} animals={animals} slotName={slotLabel(slot)} /> : null}
         </>
       )}
+
+      {can(role, "cargar") ? (
+        <Link href={`${base}/armar?e=${species}`} className="flex min-h-14 items-center justify-between rounded-2xl border border-line bg-surface px-4 py-3">
+          <span className="flex flex-col">
+            <span className="text-[15px] font-semibold">Armar la ración de {plural}</span>
+            <span className="text-[13px] text-muted">Elegir animales, qué comen y en qué turnos</span>
+          </span>
+          <span aria-hidden="true" className="text-muted">›</span>
+        </Link>
+      ) : null}
     </div>
   );
 }

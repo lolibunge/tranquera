@@ -586,12 +586,13 @@ export const feedRounds = pgTable(
       .references(() => farms.id, { onDelete: "cascade" }),
     date: date("fecha").notNull(),
     slot: text("turno").notNull(),
+    species: text("especie").notNull().default("caballo"),
     animals: integer("animales").notNull().default(0),
     skipped: text("salteados"), // nombres de los que no comieron, si alguno
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("raciones_dadas_unq").on(t.farmId, t.date, t.slot)],
+  (t) => [uniqueIndex("raciones_dadas_unq").on(t.farmId, t.date, t.slot, t.species)],
 );
 
 /** Gastos del campo, con categoría y a quién se imputan (opcional). */

@@ -16,7 +16,7 @@ export const slotLabel = (k: string) => SLOTS.find((s) => s.key === k)?.label ??
 const isSlot = (v: string): v is Slot => SLOTS.some((s) => s.key === v);
 
 export const planInput = z.object({
-  animalId: z.string().uuid(),
+  animalIds: z.array(z.string().uuid()).min(1, "Elegí al menos un animal."),
   supplyId: z.string().uuid("Elegí qué come."),
   slots: z.array(z.string()).min(1, "Elegí al menos un turno."),
   quantity: z
@@ -27,31 +27,40 @@ export const planInput = z.object({
   notes: z.string().trim().max(200).optional(),
 });
 
-export async function addPlanItem(farmId: string, raw: z.input<typeof planInput>) {
+/** Agrega (o reemplaza) un insumo en la ración de uno o varios animales. En lotes, la cantidad es por cabeza. */
+export async function addPlanItems(farmId: string, raw: z.input<typeof planInput>) {
   const parsed = planInput.safeParse(raw);
   if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0].message };
   const d = parsed.data;
   const slots = d.slots.filter(isSlot);
   if (!slots.length) return { ok: false as const, error: "Elegí al menos un turno." };
-  const [a] = await db
+  const animals = await db
     .select({ id: schema.animals.id })
     .from(schema.animals)
-    .where(and(eq(schema.animals.id, d.animalId), eq(schema.animals.farmId, farmId), eq(schema.animals.status, "activo")))
-    .limit(1);
+    .where(and(inArray(schema.animals.id, d.animalIds), eq(schema.animals.farmId, farmId), eq(schema.animals.status, "activo")));
   const [s] = await db
     .select({ id: schema.supplies.id })
     .from(schema.supplies)
     .where(and(eq(schema.supplies.id, d.supplyId), eq(schema.supplies.farmId, farmId), eq(schema.supplies.active, true)))
     .limit(1);
-  if (!a || !s) return { ok: false as const, error: "Revisá el animal y el insumo." };
-  // Si ya tenía ese insumo en ese turno, se reemplaza la cantidad.
+  if (!animals.length || !s) return { ok: false as const, error: "Revisá los animales y el insumo." };
+  const ids = animals.map((a) => a.id);
   await db.transaction(async (tx) => {
     await tx
       .delete(schema.feedPlans)
-      .where(and(eq(schema.feedPlans.animalId, d.animalId), eq(schema.feedPlans.supplyId, d.supplyId), inArray(schema.feedPlans.slot, slots)));
-    await tx.insert(schema.feedPlans).values(slots.map((slot) => ({ farmId, animalId: d.animalId, supplyId: d.supplyId, slot, quantity: d.quantity, notes: d.notes || null })));
+      .where(and(inArray(schema.feedPlans.animalId, ids), eq(schema.feedPlans.supplyId, d.supplyId), inArray(schema.feedPlans.slot, slots)));
+    await tx
+      .insert(schema.feedPlans)
+      .values(ids.flatMap((animalId) => slots.map((slot) => ({ farmId, animalId, supplyId: d.supplyId, slot, quantity: d.quantity, notes: d.notes || null }))));
   });
-  return { ok: true as const };
+  return { ok: true as const, value: { animals: ids.length } };
+}
+
+/** Saca de la ración a varios animales (todo lo que comían). */
+export async function clearPlans(farmId: string, animalIds: string[]) {
+  const ids = animalIds.filter((id) => z.string().uuid().safeParse(id).success);
+  if (!ids.length) return;
+  await db.delete(schema.feedPlans).where(and(eq(schema.feedPlans.farmId, farmId), inArray(schema.feedPlans.animalId, ids)));
 }
 
 export async function removePlanItem(farmId: string, id: string) {
@@ -69,7 +78,7 @@ export async function animalPlan(farmId: string, animalId: string) {
 }
 
 /** Todo el plan de un turno, por animal (solo animales activos). */
-export async function slotPlan(farmId: string, slot: Slot) {
+export async function slotPlan(farmId: string, slot: Slot, species: string) {
   const rows = await db
     .select({
       id: schema.feedPlans.id,
@@ -82,16 +91,24 @@ export async function slotPlan(farmId: string, slot: Slot) {
       unit: schema.supplies.unit,
       quantity: schema.feedPlans.quantity,
       paddock: schema.paddocks.name,
+      heads: schema.animals.headCount,
+      isLot: schema.animals.isLot,
     })
     .from(schema.feedPlans)
     .innerJoin(schema.animals, and(eq(schema.animals.id, schema.feedPlans.animalId), eq(schema.animals.status, "activo")))
     .innerJoin(schema.supplies, and(eq(schema.supplies.id, schema.feedPlans.supplyId), eq(schema.supplies.active, true)))
     .leftJoin(schema.paddocks, eq(schema.paddocks.id, schema.animals.paddockId))
-    .where(and(eq(schema.feedPlans.farmId, farmId), eq(schema.feedPlans.slot, slot)))
+    .where(and(eq(schema.feedPlans.farmId, farmId), eq(schema.feedPlans.slot, slot), eq(schema.animals.species, species)))
     .orderBy(asc(schema.animals.name));
-  const animals = new Map<string, { id: string; title: string; paddock: string | null; items: { supplyId: string; supply: string; unit: string; quantity: number }[] }>();
+  const animals = new Map<string, { id: string; title: string; paddock: string | null; heads: number; items: { supplyId: string; supply: string; unit: string; quantity: number }[] }>();
   for (const r of rows) {
-    const a = animals.get(r.animalId) ?? { id: r.animalId, title: r.name ?? (r.tag ? formatTag(r.tag) : formatTag(r.rfid)), paddock: r.paddock, items: [] };
+    const a = animals.get(r.animalId) ?? {
+      id: r.animalId,
+      title: (r.name ?? (r.tag ? formatTag(r.tag) : formatTag(r.rfid))) + (r.isLot ? ` · ${r.heads} cab.` : ""),
+      paddock: r.paddock,
+      heads: r.isLot ? r.heads : 1,
+      items: [],
+    };
     a.items.push({ supplyId: r.supplyId, supply: r.supply, unit: r.unit, quantity: r.quantity });
     animals.set(r.animalId, a);
   }
@@ -104,27 +121,27 @@ export function totals(animals: Awaited<ReturnType<typeof slotPlan>>) {
   for (const a of animals)
     for (const i of a.items) {
       const t = map.get(i.supplyId) ?? { supply: i.supply, unit: i.unit, quantity: 0 };
-      t.quantity += i.quantity;
+      t.quantity += i.quantity * a.heads;
       map.set(i.supplyId, t);
     }
   return [...map.entries()].map(([id, t]) => ({ id, ...t }));
 }
 
-export async function roundsOn(farmId: string, date: string) {
+export async function roundsOn(farmId: string, date: string, species?: string) {
   return db
     .select()
     .from(schema.feedRounds)
-    .where(and(eq(schema.feedRounds.farmId, farmId), eq(schema.feedRounds.date, date)));
+    .where(and(eq(schema.feedRounds.farmId, farmId), eq(schema.feedRounds.date, date), species ? eq(schema.feedRounds.species, species) : undefined));
 }
 
 /**
  * Da la ración de un turno: descuenta del stock lo de todos menos los salteados.
  * Una vez por día y turno.
  */
-export async function giveRound(farmId: string, userId: string, input: { date: string; slot: string; skip: string[] }) {
+export async function giveRound(farmId: string, userId: string, input: { date: string; slot: string; species: string; skip: string[] }) {
   if (!isISODate(input.date) || input.date > todayISO()) return { ok: false as const, error: "Revisá la fecha." };
   if (!isSlot(input.slot)) return { ok: false as const, error: "Elegí el turno." };
-  const animals = await slotPlan(farmId, input.slot);
+  const animals = await slotPlan(farmId, input.slot, input.species);
   const skip = new Set(input.skip);
   const fed = animals.filter((a) => !skip.has(a.id));
   if (!fed.length) return { ok: false as const, error: "No queda ningún animal para darle de comer." };
@@ -135,6 +152,7 @@ export async function giveRound(farmId: string, userId: string, input: { date: s
         farmId,
         date: input.date,
         slot: input.slot,
+        species: input.species,
         animals: fed.length,
         skipped: animals.filter((a) => skip.has(a.id)).map((a) => a.title).join(", ") || null,
         createdBy: userId,
@@ -149,7 +167,7 @@ export async function giveRound(farmId: string, userId: string, input: { date: s
         supplyId: s.id,
         date: input.date,
         quantity: -s.quantity,
-        note: `Ración ${slotLabel(input.slot).toLowerCase()} · ${fed.length} animal${fed.length === 1 ? "" : "es"}`,
+        note: `Ración ${slotLabel(input.slot).toLowerCase()} · ${fed.length} ${fed.length === 1 ? "animal" : "animales"} (${input.species})`,
         feedRoundId: round.id,
         createdBy: userId,
       })),
@@ -169,9 +187,33 @@ export async function undoRound(farmId: string, id: string) {
   });
 }
 
-export async function hasPlans(farmId: string) {
-  const [r] = await db.select({ id: schema.feedPlans.id }).from(schema.feedPlans).where(eq(schema.feedPlans.farmId, farmId)).limit(1);
-  return Boolean(r);
+/** Especies que tienen algún animal activo con ración. */
+export async function speciesWithPlans(farmId: string) {
+  const rows = await db
+    .selectDistinct({ species: schema.animals.species })
+    .from(schema.feedPlans)
+    .innerJoin(schema.animals, and(eq(schema.animals.id, schema.feedPlans.animalId), eq(schema.animals.status, "activo")))
+    .where(eq(schema.feedPlans.farmId, farmId));
+  return rows.map((r) => r.species);
+}
+
+/** Animales activos de una especie con lo que comen por turno (para armar la ración). */
+export async function speciesPlans(farmId: string, species: string) {
+  const rows = await db
+    .select({
+      animalId: schema.feedPlans.animalId,
+      slot: schema.feedPlans.slot,
+      quantity: schema.feedPlans.quantity,
+      supply: schema.supplies.name,
+      unit: schema.supplies.unit,
+    })
+    .from(schema.feedPlans)
+    .innerJoin(schema.animals, and(eq(schema.animals.id, schema.feedPlans.animalId), eq(schema.animals.status, "activo"), eq(schema.animals.species, species)))
+    .innerJoin(schema.supplies, eq(schema.supplies.id, schema.feedPlans.supplyId))
+    .where(eq(schema.feedPlans.farmId, farmId));
+  const map = new Map<string, string[]>();
+  for (const r of rows) map.set(r.animalId, [...(map.get(r.animalId) ?? []), `${slotLabel(r.slot)}: ${r.quantity.toLocaleString("es-UY")} ${r.unit} ${r.supply}`]);
+  return map;
 }
 
 export async function recentRounds(farmId: string) {

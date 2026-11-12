@@ -2,12 +2,13 @@
 
 import { useActionState, useState } from "react";
 import { Button, Field, Notice, SelectField } from "@/components/ui";
+import { AnimalPicker, type PickAnimal } from "@/components/animal-picker";
 import { addPlanAction, giveRoundAction, type FeedState } from "./actions";
 
-type Animal = { id: string; title: string; paddock: string | null; items: { supply: string; unit: string; quantity: number }[] };
+type Animal = { id: string; title: string; paddock: string | null; heads: number; items: { supply: string; unit: string; quantity: number }[] };
 const qty = (n: number) => n.toLocaleString("es-UY", { maximumFractionDigits: 2 });
 
-export function RoundForm({ slug, slot, date, animals, slotName }: { slug: string; slot: string; date: string; animals: Animal[]; slotName: string }) {
+export function RoundForm({ slug, slot, species, date, animals, slotName }: { slug: string; slot: string; species: string; date: string; animals: Animal[]; slotName: string }) {
   const [state, action, pending] = useActionState<FeedState, FormData>(giveRoundAction, {});
   const [skip, setSkip] = useState<Set<string>>(new Set());
   if (state.ok) return <Notice tone="ok">{state.ok}</Notice>;
@@ -15,6 +16,7 @@ export function RoundForm({ slug, slot, date, animals, slotName }: { slug: strin
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="slug" value={slug} />
       <input type="hidden" name="slot" value={slot} />
+      <input type="hidden" name="species" value={species} />
       <input type="hidden" name="date" value={date} />
       {[...skip].map((id) => (
         <input key={id} type="hidden" name="skip" value={id} />
@@ -40,7 +42,7 @@ export function RoundForm({ slug, slot, date, animals, slotName }: { slug: strin
                 />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className={`text-[15px] font-semibold ${eats ? "" : "text-muted line-through"}`}>{a.title}</span>
-                  <span className="text-[13px] text-muted">{a.items.map((i) => `${qty(i.quantity)} ${i.unit} ${i.supply}`).join(" · ")}</span>
+                  <span className="text-[13px] text-muted">{a.items.map((i) => `${qty(i.quantity)} ${i.unit}${a.heads > 1 ? " por cabeza" : ""} ${i.supply}`).join(" · ")}</span>
                 </span>
                 {a.paddock ? <span className="shrink-0 text-[12px] text-muted">{a.paddock}</span> : null}
               </label>
@@ -59,22 +61,32 @@ export function RoundForm({ slug, slot, date, animals, slotName }: { slug: strin
 
 export function PlanForm({
   slug,
-  animalId,
+  animalIds,
   supplies,
   slots,
+  perHead,
+  picker,
 }: {
   slug: string;
-  animalId: string;
+  /** Animales fijos (desde la ficha). Si viene picker, se eligen ahí. */
+  animalIds?: string[];
   supplies: { id: string; name: string; unit: string }[];
   slots: readonly { key: string; label: string }[];
+  perHead?: boolean;
+  picker?: { animals: PickAnimal[]; paddocks: { id: string; name: string }[]; species: { key: string; label: string }[] };
 }) {
   const [state, action, pending] = useActionState<FeedState, FormData>(addPlanAction, {});
   const [supply, setSupply] = useState(supplies[0]?.id ?? "");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const unit = supplies.find((s) => s.id === supply)?.unit ?? "";
+  const ids = picker ? [...selected] : (animalIds ?? []);
   return (
     <form action={action} className="flex flex-col gap-4" key={state.at}>
       <input type="hidden" name="slug" value={slug} />
-      <input type="hidden" name="animalId" value={animalId} />
+      {ids.map((id) => (
+        <input key={id} type="hidden" name="animal" value={id} />
+      ))}
+      {picker ? <AnimalPicker animals={picker.animals} species={picker.species} paddocks={picker.paddocks} selected={selected} onChange={setSelected} /> : null}
       <div className="grid grid-cols-[1fr_7rem] gap-3">
         <SelectField id="supplyId" name="supplyId" label="Qué come" value={supply} onChange={(e) => setSupply(e.target.value)}>
           {supplies.map((s) => (
@@ -83,7 +95,7 @@ export function PlanForm({
             </option>
           ))}
         </SelectField>
-        <Field id="planQty" name="quantity" label={`Cantidad (${unit})`} inputMode="decimal" required />
+        <Field id="planQty" name="quantity" label={`${perHead || picker ? "Por cabeza" : "Cantidad"} (${unit})`} inputMode="decimal" required />
       </div>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1.5 text-sm font-semibold">Turnos</legend>
@@ -96,10 +108,11 @@ export function PlanForm({
           ))}
         </div>
       </fieldset>
+      {picker ? <p className="text-[13px] text-muted">En los lotes, la cantidad es por cabeza. Si un animal ya comía ese insumo en ese turno, se reemplaza.</p> : null}
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
       {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}
-      <Button type="submit" kind="secondary" disabled={pending}>
-        {pending ? "Guardando…" : "Agregar a la ración"}
+      <Button type="submit" kind={picker ? "primary" : "secondary"} disabled={pending || !ids.length}>
+        {pending ? "Guardando…" : picker ? `Agregar a la ración (${ids.length})` : "Agregar a la ración"}
       </Button>
     </form>
   );

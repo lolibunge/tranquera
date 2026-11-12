@@ -71,6 +71,13 @@
       "when": 1794519428330,
       "tag": "0009_racion",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794520511550,
+      "tag": "0010_racion_especie",
+      "breakpoints": true
     }
   ]
 }
