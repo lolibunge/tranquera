@@ -210,6 +210,8 @@ export const animals = pgTable(
     arrivedOn: date("ingreso"),
     isLot: boolean("es_lote").notNull().default(false),
     headCount: integer("cabezas").notNull().default(1),
+    color: text("pelaje"),
+    training: text("doma"), // caballos: sin domar, en doma, domado…
     notes: text("notas"),
     status: animalStatusEnum("estado").notNull().default("activo"),
     statusDate: date("estado_fecha"),
@@ -279,6 +281,8 @@ export const healthEvents = pgTable(
     notes: text("notas"),
     // Dato por animal: resultado del tacto, kilos de la pesada o de lana…
     result: text("resultado"),
+    cost: numeric("costo", { precision: 12, scale: 2 }),
+    currency: text("moneda"),
     clientId: uuid("client_id"),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
@@ -326,6 +330,11 @@ export const paddocks = pgTable(
     svgId: text("svg_id"),
     notes: text("notas"),
     active: boolean("activo").notNull().default(true),
+    /** Potrero dentro de otro (franjas, piquetes de un potrero grande). */
+    parentId: uuid("padre_id").references((): AnyPgColumn => paddocks.id, { onDelete: "set null" }),
+    zone: text("zona"),
+    /** Descanso marcado a mano (cuando no hay movimientos que lo digan). */
+    restSince: date("descanso_desde"),
     ...timestamps,
   },
   (t) => [index("potreros_campo_idx").on(t.farmId), uniqueIndex("potreros_nombre_unq").on(t.farmId, t.name)],
@@ -405,6 +414,9 @@ export const weatherLogs = pgTable(
     date: date("fecha").notNull(),
     rainMm: doublePrecision("lluvia_mm"),
     frost: boolean("helada").notNull().default(false),
+    frostIntensity: text("helada_intensidad"), // leve | moderada | fuerte
+    tempMin: doublePrecision("temp_min"),
+    tempMax: doublePrecision("temp_max"),
     note: text("nota"),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
@@ -529,6 +541,110 @@ export const tasks = pgTable(
     ...timestamps,
   },
   (t) => [index("tareas_campo_idx").on(t.farmId, t.date)],
+);
+
+/** Tropillas o grupos: animales que se manejan y se mueven juntos. */
+export const herds = pgTable(
+  "grupos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    name: text("nombre").notNull(),
+    notes: text("notas"),
+    active: boolean("activo").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("grupos_nombre_unq").on(t.farmId, t.name)],
+);
+
+/** Quién estuvo en cada grupo y cuándo. "hasta" vacío = está ahora. */
+export const herdMembers = pgTable(
+  "grupo_miembros",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    herdId: uuid("grupo_id")
+      .notNull()
+      .references(() => herds.id, { onDelete: "cascade" }),
+    animalId: uuid("animal_id")
+      .notNull()
+      .references(() => animals.id, { onDelete: "cascade" }),
+    from: date("desde").notNull(),
+    to: date("hasta"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("grupo_miembros_grupo_idx").on(t.herdId), index("grupo_miembros_animal_idx").on(t.animalId)],
+);
+
+/** Laboreos de potreros: siembra, fertilización, rotativa, herbicida… y cuándo vuelve a estar pronto. */
+export const fieldWorks = pgTable(
+  "laboreos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    paddockId: uuid("potrero_id")
+      .notNull()
+      .references(() => paddocks.id, { onDelete: "cascade" }),
+    kind: text("tipo").notNull(),
+    date: date("fecha").notNull(),
+    readyOn: date("pronto_desde"),
+    doneBy: text("hecho_por"),
+    notes: text("notas"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("laboreos_potrero_idx").on(t.paddockId, t.date)],
+);
+
+/** Mediciones de pasto (método del cuadro): kg de materia seca por hectárea. */
+export const pastureReadings = pgTable(
+  "mediciones_pasto",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    paddockId: uuid("potrero_id")
+      .notNull()
+      .references(() => paddocks.id, { onDelete: "cascade" }),
+    date: date("fecha").notNull(),
+    kgDmHa: doublePrecision("kg_ms_ha").notNull(),
+    /** Muestras y parámetros: { muestras: [g], area_m2, ms_pct, altura, modo } */
+    detail: text("detalle"),
+    notes: text("notas"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("mediciones_potrero_idx").on(t.paddockId, t.date)],
+);
+
+/**
+ * Archivo de lo importado de otro sistema (campo-admin): cada fila de origen tal cual,
+ * y a qué registro de Tranquera fue (si fue). Garantiza que no se pierde nada y que
+ * importar dos veces no duplica.
+ */
+export const importArchive = pgTable(
+  "archivo_origen",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    source: text("origen").notNull(),
+    table: text("tabla").notNull(),
+    sourceId: text("id_origen").notNull(),
+    data: text("datos").notNull(),
+    targetTable: text("destino_tabla"),
+    targetId: uuid("destino_id"),
+    importedAt: timestamp("importado", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("archivo_origen_unq").on(t.farmId, t.source, t.table, t.sourceId)],
 );
 
 export type Paddock = typeof paddocks.$inferSelect;

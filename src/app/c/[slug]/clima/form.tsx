@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, Field, Notice } from "@/components/ui";
+import { Button, Field, Notice, SelectField } from "@/components/ui";
 import { saveWeatherAction, type WeatherState } from "./actions";
 
 export function WeatherForm({ slug, today }: { slug: string; today: string }) {
@@ -13,10 +13,22 @@ export function WeatherForm({ slug, today }: { slug: string; today: string }) {
         <Field id="date" name="date" type="date" label="Fecha" max={today} defaultValue={today} required />
         <Field id="rainMm" name="rainMm" label="Lluvia (mm)" inputMode="decimal" placeholder="0" />
       </div>
-      <label className="flex min-h-11 items-center gap-3 text-[15px] font-semibold">
-        <input type="checkbox" name="frost" className="size-5 accent-brand" />
-        Hubo helada
-      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <Field id="tempMin" name="tempMin" label="Mínima (°C)" inputMode="decimal" placeholder="Opcional" />
+        <Field id="tempMax" name="tempMax" label="Máxima (°C)" inputMode="decimal" placeholder="Opcional" />
+      </div>
+      <div className="grid grid-cols-2 items-end gap-3">
+        <label className="flex min-h-13 items-center gap-3 text-[15px] font-semibold">
+          <input type="checkbox" name="frost" className="size-5 accent-brand" />
+          Hubo helada
+        </label>
+        <SelectField id="frostIntensity" name="frostIntensity" label="Intensidad" defaultValue="">
+          <option value="">—</option>
+          <option value="leve">Leve</option>
+          <option value="moderada">Moderada</option>
+          <option value="fuerte">Fuerte</option>
+        </SelectField>
+      </div>
       <Field id="note" name="note" label="Nota" placeholder="Opcional: granizo, viento…" />
       <p className="text-[13px] text-muted">Si ya había un registro de ese día, se reemplaza.</p>
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}

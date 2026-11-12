@@ -12,10 +12,17 @@ export async function saveWeatherAction(_prev: WeatherState, formData: FormData)
   const access = await getFarmAccess(String(formData.get("slug") ?? ""));
   if (!can(access.role, "cargar")) return { error: "No tenés permiso para cargar datos." };
   const mm = String(formData.get("rainMm") ?? "").trim();
+  const num = (k: string) => {
+    const v = String(formData.get(k) ?? "").trim();
+    return v ? parseAmount(v.replace(/^−/, "-")) : null;
+  };
   const result = await saveWeatherLog(access.farm.id, access.user.id, {
     date: String(formData.get("date") ?? ""),
     rainMm: mm ? parseAmount(mm) : null,
     frost: formData.get("frost") === "on",
+    frostIntensity: String(formData.get("frostIntensity") ?? "") || null,
+    tempMin: num("tempMin"),
+    tempMax: num("tempMax"),
     note: String(formData.get("note") ?? "").trim() || null,
   });
   if (!result.ok) return { error: result.error };

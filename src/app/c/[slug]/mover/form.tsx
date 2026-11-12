@@ -25,13 +25,19 @@ type Props = {
   animals: Animal[];
   initialFrom: string;
   initialTo: string;
+  herds?: { id: string; name: string; memberIds: string[] }[];
+  initialHerd?: string;
 };
 
-export function MoveForm({ slug, today, paddocks, species, animals, initialFrom, initialTo }: Props) {
+export function MoveForm({ slug, today, paddocks, species, animals, initialFrom, initialTo, herds = [], initialHerd }: Props) {
   const [state, action, pending] = useActionState<PaddockState, FormData>(moveAction, {});
   const [from, setFrom] = useState(initialFrom || "todos");
   const [kind, setKind] = useState(species[0]?.key ?? "");
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialFrom ? animals.filter((a) => a.paddockId === initialFrom).map((a) => a.id) : []));
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    initialHerd
+      ? new Set(herds.find((h) => h.id === initialHerd)?.memberIds ?? [])
+      : new Set(initialFrom ? animals.filter((a) => a.paddockId === initialFrom).map((a) => a.id) : []),
+  );
   const [read, setRead] = useState("");
   const [readMsg, setReadMsg] = useState<string | null>(null);
   const names = useMemo(() => new Map(paddocks.map((p) => [p.id, p.name])), [paddocks]);
@@ -96,6 +102,36 @@ export function MoveForm({ slug, today, paddocks, species, animals, initialFrom,
 
       <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
         <p className="text-[15px] font-semibold">Animales</p>
+        {herds.length ? (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[13px] font-semibold text-muted">Sumar un grupo entero</p>
+            <div className="flex flex-wrap gap-2">
+              {herds.map((h) => {
+                const all = h.memberIds.every((id) => selected.has(id));
+                return (
+                  <button
+                    key={h.id}
+                    type="button"
+                    aria-pressed={all}
+                    onClick={() =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        for (const id of h.memberIds) {
+                          if (all) next.delete(id);
+                          else next.add(id);
+                        }
+                        return next;
+                      })
+                    }
+                    className={`rounded-full px-3.5 py-2 text-sm font-semibold ${all ? "bg-brand text-white" : "bg-chip"}`}
+                  >
+                    {h.name} · {h.memberIds.length}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
           {species.length > 1 ? (
             <SelectField id="kind" label="Especie" value={kind} onChange={(e) => setKind(e.target.value)}>

@@ -36,6 +36,8 @@ export default async function EditAnimalPage({ params }: PageProps<"/c/[slug]/an
           tagRfid: a.tagRfid ?? "",
           birthDate: a.birthDate ?? "",
           breed: a.breed ?? "",
+          color: a.color ?? "",
+          training: a.training ?? "",
           origin: (a.origin as "nacido" | "comprado" | null) ?? "",
           originDetail: a.originDetail ?? "",
           arrivedOn: a.arrivedOn ?? "",

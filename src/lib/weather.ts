@@ -77,16 +77,34 @@ export function frostDays(forecast: ForecastDay[] | null) {
   return (forecast ?? []).filter((d) => d.min !== null && d.min <= 2);
 }
 
-export async function saveWeatherLog(farmId: string, userId: string, input: { date: string; rainMm: number | null; frost: boolean; note: string | null }) {
+export const FROST_LEVELS = [
+  { value: "leve", label: "Leve" },
+  { value: "moderada", label: "Moderada" },
+  { value: "fuerte", label: "Fuerte" },
+] as const;
+
+export async function saveWeatherLog(
+  farmId: string,
+  userId: string,
+  input: { date: string; rainMm: number | null; frost: boolean; frostIntensity?: string | null; tempMin?: number | null; tempMax?: number | null; note: string | null },
+) {
   if (!isISODate(input.date) || input.date > todayISO()) return { ok: false as const, error: "Revisá la fecha." };
   if (input.rainMm !== null && !(input.rainMm >= 0 && input.rainMm < 1000)) return { ok: false as const, error: "Revisá los milímetros." };
-  if (input.rainMm === null && !input.frost && !input.note) return { ok: false as const, error: "Poné los milímetros, marcá la helada o escribí una nota." };
+  const temp = (v: number | null | undefined) => (v === null || v === undefined ? null : v);
+  const tempMin = temp(input.tempMin);
+  const tempMax = temp(input.tempMax);
+  if ([tempMin, tempMax].some((t) => t !== null && !(t > -30 && t < 55))) return { ok: false as const, error: "Revisá las temperaturas." };
+  if (tempMin !== null && tempMax !== null && tempMin > tempMax) return { ok: false as const, error: "La mínima no puede ser mayor que la máxima." };
+  if (input.rainMm === null && !input.frost && !input.note && tempMin === null && tempMax === null)
+    return { ok: false as const, error: "Poné los milímetros, una temperatura, marcá la helada o escribí una nota." };
+  const frostIntensity = input.frost && FROST_LEVELS.some((f) => f.value === input.frostIntensity) ? input.frostIntensity! : null;
+  const values = { rainMm: input.rainMm, frost: input.frost, frostIntensity, tempMin, tempMax, note: input.note };
   await db
     .insert(schema.weatherLogs)
-    .values({ farmId, date: input.date, rainMm: input.rainMm, frost: input.frost, note: input.note, createdBy: userId })
+    .values({ farmId, date: input.date, ...values, createdBy: userId })
     .onConflictDoUpdate({
       target: [schema.weatherLogs.farmId, schema.weatherLogs.date],
-      set: { rainMm: input.rainMm, frost: input.frost, note: input.note, updatedAt: new Date() },
+      set: { ...values, updatedAt: new Date() },
     });
   return { ok: true as const };
 }

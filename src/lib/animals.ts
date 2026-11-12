@@ -41,6 +41,9 @@ export const animalInput = z.object({
   tagRfid: optionalText(40),
   birthDate: optionalDate("nacimiento"),
   breed: optionalText(60),
+  /** undefined: no se toca. */
+  color: z.string().trim().max(40).optional().transform((v) => (v === undefined ? undefined : v || null)),
+  training: z.enum(["", "sin_domar", "en_doma", "domado", "retirado"]).optional().transform((v) => (v === undefined ? undefined : v || null)),
   origin: z.enum(["nacido", "comprado"]).nullable().optional().transform((v) => v ?? null),
   originDetail: optionalText(120),
   arrivedOn: optionalDate("ingreso"),
@@ -132,6 +135,8 @@ export async function prepareAnimal(farmId: string, raw: AnimalInput, editingId?
       tagRfid,
       birthDate: d.birthDate,
       breed: d.breed,
+      color: d.species === "caballo" ? d.color : undefined,
+      training: d.species === "caballo" ? d.training : undefined,
       origin: d.origin,
       originDetail: d.origin === "comprado" ? d.originDetail : null,
       arrivedOn: d.origin === "comprado" ? d.arrivedOn : null,

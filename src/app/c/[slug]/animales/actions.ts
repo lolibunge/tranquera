@@ -31,6 +31,8 @@ function readAnimal(formData: FormData): AnimalInput {
     tagRfid: text(formData, "tagRfid"),
     birthDate: text(formData, "birthDate"),
     breed: text(formData, "breed"),
+    color: formData.has("color") ? text(formData, "color") : undefined,
+    training: formData.has("training") ? (text(formData, "training") as "") : undefined,
     origin: (text(formData, "origin") || null) as "nacido" | "comprado" | null,
     originDetail: text(formData, "originDetail"),
     arrivedOn: text(formData, "arrivedOn"),
@@ -117,6 +119,8 @@ export async function addHealth(_prev: AnimalFormState, formData: FormData): Pro
     vet: text(formData, "vet"),
     notes: text(formData, "notes"),
     result: text(formData, "result") || null,
+    cost: text(formData, "cost"),
+    currency: text(formData, "currency") === "USD" ? "USD" : "UYU",
   });
   if (!result.ok) return { error: result.error };
   revalidatePath(`/c/${access.farm.slug}`, "layout");

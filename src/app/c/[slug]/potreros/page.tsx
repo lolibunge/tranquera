@@ -42,6 +42,13 @@ export default async function PaddocksPage({ params, searchParams }: PageProps<"
       </div>
 
       {load && paddocks.length ? <ButtonLink href={`/c/${slug}/mover`}>Mover animales</ButtonLink> : null}
+      <Link href={`/c/${slug}/grupos`} className="flex min-h-13 items-center justify-between rounded-2xl border border-line bg-surface px-4 py-3">
+        <span className="flex flex-col">
+          <span className="text-[15px] font-semibold">Tropillas y grupos</span>
+          <span className="text-[13px] text-muted">Animales que se mueven juntos</span>
+        </span>
+        <span aria-hidden="true" className="text-muted">›</span>
+      </Link>
 
       {map ? <FarmMapView map={map} paddocks={paddocks} slug={slug} /> : null}
       {configure && map?.shapes.some((sh) => !sh.name && !sh.background) ? (

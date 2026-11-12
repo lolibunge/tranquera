@@ -119,19 +119,7 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   return <h2 className="font-display text-lg font-bold">{children}</h2>;
 }
 
-export function BackLink({ href, label = "Volver" }: { href: string; label?: string }) {
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface text-ink"
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M15 18l-6-6 6-6" />
-      </svg>
-    </Link>
-  );
-}
+export { BackLink } from "./nav-history";
 
 export function FarmMark({ name, logo, size = 40 }: { name: string; logo?: string | null; size?: number }) {
   const initials =

@@ -17,6 +17,8 @@ export type AnimalValues = {
   tagRfid: string;
   birthDate: string;
   breed: string;
+  color?: string;
+  training?: string;
   origin: "" | "nacido" | "comprado";
   originDetail: string;
   arrivedOn: string;
@@ -51,6 +53,8 @@ export function AnimalForm(props: Props) {
         isLot: kept.isLot === "1",
         category: kept.category ?? "",
         breed: kept.breed ?? "",
+        color: props.initial.color ?? "",
+        training: props.initial.training ?? "",
         origin: (kept.origin as AnimalValues["origin"]) ?? "",
         originDetail: kept.originDetail ?? "",
         arrivedOn: kept.arrivedOn ?? "",
@@ -199,6 +203,24 @@ function AnimalFormBody({
           </datalist>
         </div>
       </div>
+
+      {v.species === "caballo" && !lotMode ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Field id="color" name="color" label="Pelaje" list="pelajes" value={v.color ?? ""} onChange={(e) => set("color", e.target.value)} placeholder="Zaino, tordillo…" />
+          <datalist id="pelajes">
+            {["Zaino", "Tordillo", "Moro", "Alazán", "Bayo", "Overo", "Picazo", "Gateado", "Rosillo", "Tostado", "Blanco", "Negro"].map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <SelectField id="training" name="training" label="Doma" value={v.training ?? ""} onChange={(e) => set("training", e.target.value)}>
+            <option value="">Sin dato</option>
+            <option value="sin_domar">Sin domar</option>
+            <option value="en_doma">En doma</option>
+            <option value="domado">Domado</option>
+            <option value="retirado">Retirado</option>
+          </SelectField>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <p className="text-sm font-semibold">Origen</p>

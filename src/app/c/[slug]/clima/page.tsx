@@ -67,11 +67,16 @@ export default async function WeatherPage({ params, searchParams }: PageProps<"/
               <li key={l.id} className="flex items-center justify-between gap-3 border-b border-chip px-4 py-2.5 last:border-b-0">
                 <span className="flex flex-col">
                   <span className="text-[15px] font-semibold">{formatDate(l.date)}</span>
+                  {l.tempMin !== null || l.tempMax !== null ? (
+                    <span className="text-[13px] text-muted tabular-nums">
+                      {l.tempMin !== null ? `${l.tempMin}°` : "–"} / {l.tempMax !== null ? `${l.tempMax}°` : "–"}
+                    </span>
+                  ) : null}
                   {l.note ? <span className="text-[13px] text-muted">{l.note}</span> : null}
                 </span>
                 <span className="text-right text-[15px] font-semibold tabular-nums">
                   {l.rainMm !== null ? `${l.rainMm} mm` : ""}
-                  {l.frost ? <span className="block text-xs font-semibold text-info-fg">Helada</span> : null}
+                  {l.frost ? <span className="block text-xs font-semibold text-info-fg">Helada{l.frostIntensity ? ` ${l.frostIntensity}` : ""}</span> : null}
                 </span>
               </li>
             ))}

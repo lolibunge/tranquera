@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Field, Notice } from "@/components/ui";
+import { Button, Field, Notice, SelectField } from "@/components/ui";
 import { ControlSelect } from "@/components/control-select";
 import { CATALOG, type SpeciesKey } from "@/lib/catalogo";
 import { addDays } from "@/lib/dates";
@@ -89,6 +89,13 @@ export function HealthForm({ slug, animalId, species, today }: { slug: string; a
       <div className="grid grid-cols-2 gap-3">
         <Field id="dose" name="dose" label="Dosis" placeholder="5 ml" />
         <Field id="vet" name="vet" label={info?.vetLabel ?? "Veterinario"} key={`v-${control}`} />
+      </div>
+      <div className="grid grid-cols-[1fr_6.5rem] gap-3">
+        <Field id="cost" name="cost" label="Costo" inputMode="decimal" placeholder="Opcional" />
+        <SelectField id="currency" name="currency" label="Moneda" defaultValue="UYU">
+          <option value="UYU">$</option>
+          <option value="USD">US$</option>
+        </SelectField>
       </div>
       <Field id="notes" name="notes" label="Notas" />
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}

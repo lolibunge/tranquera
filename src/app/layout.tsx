@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorker } from "@/components/service-worker";
+import { NavHistory } from "@/components/nav-history";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-ground text-ink">
         {children}
         <ServiceWorker />
+        <NavHistory />
       </body>
     </html>
   );

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { CATALOG, controlOf, isHealthControl, isSpeciesKey } from "./catalogo";
 import { addDays, isISODate, todayISO } from "./dates";
+import { parseAmount } from "./number";
 
 /** Días antes del vencimiento en que un control pasa a "vence pronto". */
 export const SOON_DAYS = 14;
@@ -130,6 +131,13 @@ export const healthInput = z.object({
   sessionId: z.string().uuid().optional().nullable(),
   clientId: z.string().uuid().optional().nullable(),
   result: z.string().trim().max(40).optional().nullable(),
+  cost: z
+    .string()
+    .trim()
+    .optional()
+    .refine((v) => !v || ((parseAmount(v) ?? -1) >= 0 && (parseAmount(v) ?? 0) < 1e8), "Revisá el costo.")
+    .transform((v) => (v ? parseAmount(v) : null)),
+  currency: z.enum(["USD", "UYU"]).optional(),
 });
 export type HealthInput = z.input<typeof healthInput>;
 
@@ -187,6 +195,8 @@ export async function recordHealth(farmId: string, userId: string, raw: HealthIn
       vet: d.vet || null,
       notes: d.notes || null,
       result,
+      cost: d.cost !== null && d.cost !== undefined ? d.cost.toFixed(2) : null,
+      currency: d.cost !== null && d.cost !== undefined ? (d.currency ?? "UYU") : null,
       clientId: d.clientId ?? null,
       createdBy: userId,
     })

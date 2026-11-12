@@ -6,6 +6,7 @@ import { getAnimal } from "@/lib/animals";
 import { CATALOG, SEX_LABEL, categoryOf, formatTag, isSpeciesKey, type Sex } from "@/lib/catalogo";
 import { controlsForAnimal, healthHistory } from "@/lib/health";
 import { animalMovements } from "@/lib/paddocks";
+import { animalHerds } from "@/lib/herds";
 import { DEATH_CAUSES } from "@/lib/sales";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -24,6 +25,8 @@ export async function generateMetadata({ params }: PageProps<"/c/[slug]/animales
 
 const TONE_LABEL = { ok: "Al día", warn: "Vence pronto", bad: "Vencido" } as const;
 
+const TRAINING: Record<string, string> = { sin_domar: "Sin domar", en_doma: "En doma", domado: "Domado", retirado: "Retirado" };
+
 export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animales/[id]">) {
   const { slug, id } = await params;
   const { farm, role } = await getFarmAccess(slug);
@@ -31,17 +34,21 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
   if (!a || !isSpeciesKey(a.species)) notFound();
   const info = CATALOG[a.species];
   const today = todayISO();
-  const [controls, history, moves, paddock, owner] = await Promise.all([
+  const [controls, history, moves, paddock, owner, herds] = await Promise.all([
     controlsForAnimal(farm.id, a.id, a.species),
     healthHistory(farm.id, a.id),
     animalMovements(farm.id, a.id),
     a.paddockId ? db.select({ id: schema.paddocks.id, name: schema.paddocks.name }).from(schema.paddocks).where(eq(schema.paddocks.id, a.paddockId)).limit(1) : Promise.resolve([]),
     a.ownerId ? db.select({ id: schema.owners.id, name: schema.owners.name }).from(schema.owners).where(eq(schema.owners.id, a.ownerId)).limit(1) : Promise.resolve([]),
+    animalHerds(farm.id, a.id),
   ]);
+  const herd = herds.find((h) => !h.to);
   const title = a.isLot ? a.name : a.tagVisual ? formatTag(a.tagVisual) : a.name ?? formatTag(a.tagRfid);
   const sub = [
     a.isLot ? `Lote · ${a.headCount} cabezas` : categoryOf(a.species, a.category)?.label,
     a.breed,
+    a.color,
+    a.training ? TRAINING[a.training] ?? a.training : null,
     ageLabel(a.birthDate, today),
   ]
     .filter(Boolean)
@@ -69,6 +76,11 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
           {paddock[0] ? (
             <Link href={`/c/${slug}/potreros/${paddock[0].id}`} className="rounded-full bg-brand-soft px-2.5 py-1 text-[13px] font-semibold text-brand">
               {paddock[0].name}
+            </Link>
+          ) : null}
+          {herd ? (
+            <Link href={`/c/${slug}/grupos/${herd.herdId}`} className="rounded-full bg-chip px-2.5 py-1 text-[13px] font-semibold">
+              {herd.name}
             </Link>
           ) : null}
           {owner[0] ? (
@@ -151,7 +163,7 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
                   {h.result ? <span className="font-normal text-ink-2"> · {/^\d/.test(h.result) ? `${h.result} kg` : h.result}</span> : null}
                 </span>
                 <span className="text-[13px] text-muted">
-                  {[formatDate(h.date), h.product, h.batch ? (info.controls.find((c) => c.key === h.control)?.batchLabel ? h.batch : `serie ${h.batch}`) : null, h.dose, h.vet, h.sessionId ? "jornada de manga" : null]
+                  {[formatDate(h.date), h.product, h.batch ? (info.controls.find((c) => c.key === h.control)?.batchLabel ? h.batch : `serie ${h.batch}`) : null, h.dose, h.vet, h.sessionId ? "jornada de manga" : null, h.cost ? `${h.currency === "USD" ? "US$" : "$"} ${Number(h.cost).toLocaleString("es-UY")}` : null]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
