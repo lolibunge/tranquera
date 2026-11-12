@@ -116,6 +116,25 @@ function extras(today: string): Extra[] {
   ];
 }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Potreros propios del campo (no de prueba), los del mapa primero, repartidos a lo largo
+ * de la lista para que los animales no queden todos juntos.
+ */
+async function realPaddocks(tx: Tx, farmId: string) {
+  const rows = await tx
+    .select({ id: schema.paddocks.id, name: schema.paddocks.name, mapped: schema.paddocks.svgId })
+    .from(schema.paddocks)
+    .where(and(eq(schema.paddocks.farmId, farmId), eq(schema.paddocks.active, true)));
+  const own = rows.filter((r) => !r.name.endsWith("(prueba)"));
+  const pool = own.filter((r) => r.mapped).length >= 5 ? own.filter((r) => r.mapped) : own;
+  if (pool.length < 5) return [];
+  pool.sort((a, b) => a.name.localeCompare(b.name, "es", { numeric: true }));
+  const step = pool.length / 5;
+  return Array.from({ length: 5 }, (_, i) => pool[Math.floor(i * step)].id);
+}
+
 const EXTRA_SPECIES: { key: string; orientations: string[] }[] = [
   { key: "caballo", orientations: ["trabajo"] },
   { key: "caprino", orientations: ["leche"] },
@@ -124,7 +143,7 @@ const EXTRA_SPECIES: { key: string; orientations: string[] }[] = [
 ];
 
 /** Carga los caballos, cabras, chanchos y aves de prueba de las especies que todavía no tienen. */
-async function loadExtras(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], farmId: string, userId: string, today: string) {
+async function loadExtras(tx: Tx, farmId: string, userId: string, today: string) {
   for (const sp of EXTRA_SPECIES) {
     await tx
       .insert(schema.farmSpecies)
@@ -139,11 +158,13 @@ async function loadExtras(tx: Parameters<Parameters<typeof db.transaction>[0]>[0
   const list = extras(today).filter((a) => !skip.has(a.species));
   if (!list.length) return 0;
 
+  const own = await realPaddocks(tx, farmId);
   const paddocks = await tx
     .select({ id: schema.paddocks.id, name: schema.paddocks.name })
     .from(schema.paddocks)
     .where(and(eq(schema.paddocks.farmId, farmId), inArray(schema.paddocks.name, DEMO_PADDOCKS.map((p) => p.name))));
-  const paddockId = (i?: number) => (i === undefined ? null : (paddocks.find((p) => p.name === DEMO_PADDOCKS[i].name)?.id ?? null));
+  const paddockId = (i?: number) =>
+    i === undefined ? null : own.length >= 5 ? own[i === 1 ? 4 : i] : (paddocks.find((p) => p.name === DEMO_PADDOCKS[i].name)?.id ?? null);
 
   const rows = await tx
     .insert(schema.animals)
@@ -249,9 +270,11 @@ export async function loadDemo(farmId: string, userId: string) {
       return { created: added, already: added === 0 };
     }
 
-    // Potreros de prueba (si ya existen con ese nombre, se reusan).
-    const paddockIds: string[] = [];
-    for (const p of DEMO_PADDOCKS) {
+    // Si el campo ya tiene sus potreros (por ejemplo, del mapa), los animales se reparten ahí
+    // para verlos en el mapa real. Si no, se crean potreros de prueba.
+    const own = await realPaddocks(tx, farmId);
+    const paddockIds: string[] = own.length >= 5 ? own.slice(0, 5) : [];
+    for (const p of paddockIds.length ? [] : DEMO_PADDOCKS) {
       const [row] = await tx
         .insert(schema.paddocks)
         .values({ farmId, name: p.name, hectares: p.hectares, kind: p.kind })
@@ -404,7 +427,7 @@ export async function loadDemo(farmId: string, userId: string) {
 
     // Mapa de prueba, solo si el campo no tiene uno propio.
     const [hasMap] = await tx.select({ farmId: schema.farmMaps.farmId }).from(schema.farmMaps).where(eq(schema.farmMaps.farmId, farmId)).limit(1);
-    if (!hasMap) {
+    if (!hasMap && !own.length) {
       await tx.insert(schema.farmMaps).values({ farmId, svg: JSON.stringify(DEMO_MAP) });
       for (const [i, p] of DEMO_PADDOCKS.entries()) await tx.update(schema.paddocks).set({ svgId: p.name }).where(eq(schema.paddocks.id, paddockIds[i]));
     }
