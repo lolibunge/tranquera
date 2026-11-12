@@ -12,10 +12,7 @@ const DEFAULT_ACCENT = "#c9733d";
  * "Para empezar": solo lo que falta configurar. Cada paso desaparece cuando
  * se hace, y la sección entera se puede ocultar (todo sigue en Más).
  */
-export async function SetupChecklist({ slug, farm, hasSpecies }: { slug: string; farm: Farm; hasSpecies: boolean }) {
-  const jar = await cookies();
-  if (jar.get(`tq_setup_${farm.id}`)?.value === "oculto") return null;
-
+export async function pendingSetupSteps(slug: string, farm: Farm, hasSpecies: boolean, from: "inicio" | "mas") {
   const [[{ value: members }], [{ value: invites }]] = await Promise.all([
     db.select({ value: count() }).from(schema.memberships).where(eq(schema.memberships.farmId, farm.id)),
     db
@@ -33,7 +30,24 @@ export async function SetupChecklist({ slug, farm, hasSpecies }: { slug: string;
     members <= 1 && invites === 0 && { href: `/c/${slug}/usuarios?desde=inicio`, label: "Invitar al equipo" },
     farm.latitude === null && !farm.locationText && { href: `/c/${slug}/configuracion?desde=inicio`, label: "Datos del campo" },
   ].filter(Boolean) as { href: string; label: string; main?: boolean }[];
+  return from === "mas" ? steps.map((st) => ({ ...st, href: st.href.replace("desde=inicio", "desde=mas"), main: false })) : steps;
+}
 
+/** Hay animales cargados: el campo ya arrancó y lo pendiente pasa a Más. */
+export async function farmStarted(farmId: string) {
+  const [row] = await db.select({ id: schema.animals.id }).from(schema.animals).where(eq(schema.animals.farmId, farmId)).limit(1);
+  return Boolean(row);
+}
+
+/**
+ * En el Inicio solo mientras el campo arranca (sin animales cargados).
+ * Después, lo que falte se muestra en Más.
+ */
+export async function SetupChecklist({ slug, farm, hasSpecies }: { slug: string; farm: Farm; hasSpecies: boolean }) {
+  const jar = await cookies();
+  if (jar.get(`tq_setup_${farm.id}`)?.value === "oculto") return null;
+  if (hasSpecies && (await farmStarted(farm.id))) return null;
+  const steps = await pendingSetupSteps(slug, farm, hasSpecies, "inicio");
   if (!steps.length) return null;
 
   return (

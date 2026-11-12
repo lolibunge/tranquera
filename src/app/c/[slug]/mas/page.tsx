@@ -6,6 +6,8 @@ import { can, ROLE_LABEL } from "@/lib/roles";
 import { PageTitle } from "@/components/ui";
 import { hasDemo } from "@/lib/demo";
 import { DemoData } from "./demo-data";
+import { pendingSetupSteps } from "../setup-checklist";
+import { getActiveSpecies } from "@/lib/farm-species";
 import { signOut } from "../../../(acceso)/actions";
 
 export const metadata: Metadata = { title: "Más" };
@@ -14,6 +16,9 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
   const { slug } = await params;
   const { farm, role, user } = await getFarmAccess(slug);
   const base = `/c/${slug}`;
+  const pending = can(role, "configurar")
+    ? await pendingSetupSteps(slug, farm, (await getActiveSpecies(farm.id)).length > 0, "mas")
+    : [];
   const items = [
     can(role, "configurar") && { href: `${base}/configuracion`, label: "Datos del campo", sub: "Nombre, ubicación, hectáreas, DICOSE" },
     can(role, "configurar") && { href: `${base}/especies`, label: "Especies del campo", sub: "Qué animales tenés y para qué" },
@@ -26,6 +31,21 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
   return (
     <div className="flex flex-col gap-6">
       <PageTitle sub={`${farm.name} · ${ROLE_LABEL[role]}`}>Más</PageTitle>
+      {pending.length ? (
+        <section className="flex flex-col gap-2">
+          <p className="text-[13px] font-semibold text-muted">Falta configurar</p>
+          <ul className="flex flex-col overflow-hidden rounded-2xl border border-warn-dot/30 bg-warn-bg/50">
+            {pending.map((step) => (
+              <li key={step.href} className="border-b border-warn-dot/20 last:border-b-0">
+                <Link href={step.href} className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 text-[15px] font-semibold">
+                  {step.label}
+                  <span aria-hidden="true" className="text-muted">›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <ul className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface">
         {items.map((item) => (
           <li key={item.href} className="border-b border-chip last:border-b-0">
