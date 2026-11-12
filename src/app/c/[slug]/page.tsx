@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { getFarmAccess } from "@/lib/farms";
 import { can } from "@/lib/roles";
 import { getActiveSpecies } from "@/lib/farm-species";
-import { ButtonLink, FarmMark, SectionTitle } from "@/components/ui";
+import { FarmMark, SectionTitle } from "@/components/ui";
+import { SetupChecklist } from "./setup-checklist";
 import { AttendList } from "@/components/attend-list";
 
 export async function generateMetadata({ params }: PageProps<"/c/[slug]">): Promise<Metadata> {
@@ -34,19 +35,7 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
         <AttendList slug={slug} farmId={farm.id} activeSpecies={species.map((x) => x.key)} />
       </section>
 
-      {can(role, "configurar") ? (
-        <section className="flex flex-col gap-3">
-          <SectionTitle>Para empezar</SectionTitle>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {!hasSpecies ? (
-              <ButtonLink href={`/c/${slug}/especies?desde=inicio`} className="sm:col-span-2">Elegir las especies del campo</ButtonLink>
-            ) : null}
-            <ButtonLink href={`/c/${slug}/marca`} kind="secondary">Poner logo y colores</ButtonLink>
-            <ButtonLink href={`/c/${slug}/usuarios`} kind="secondary">Invitar al equipo</ButtonLink>
-            <ButtonLink href={`/c/${slug}/configuracion`} kind="secondary">Datos del campo</ButtonLink>
-          </div>
-        </section>
-      ) : null}
+      {can(role, "configurar") ? <SetupChecklist slug={slug} farm={farm} hasSpecies={hasSpecies} /> : null}
     </div>
   );
 }

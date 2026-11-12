@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -318,4 +319,16 @@ export async function clearDemoData(_prev: ActionState, formData: FormData): Pro
   const removed = await clearDemo(access.farm.id);
   revalidatePath(`/c/${access.farm.slug}`, "layout");
   return { ok: removed ? `Se borraron ${removed} animales de prueba y su sanidad.` : "No había datos de prueba.", at: Date.now() };
+}
+
+/** Oculta "Para empezar" en el Inicio de este campo (queda todo en Más). */
+export async function hideSetup(formData: FormData) {
+  const access = await getFarmAccess(String(formData.get("slug") ?? ""));
+  (await cookies()).set(`tq_setup_${access.farm.id}`, "oculto", {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365 * 5,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+  revalidatePath(`/c/${access.farm.slug}`);
 }
