@@ -6,7 +6,9 @@ import { can } from "@/lib/roles";
 import { formatMoney, listOwners, OWNER_KINDS, ownerKindLabel, yearSummary } from "@/lib/owners";
 import { todayISO } from "@/lib/dates";
 import { BackLink, Card, PageTitle, SectionTitle } from "@/components/ui";
-import { OwnerForm } from "./forms";
+import { ChargeMonthForm, OwnerForm } from "./forms";
+import { balances, monthName } from "@/lib/ledger";
+import { addMoney, type Money } from "@/lib/owners";
 
 export const metadata: Metadata = { title: "Propietarios y resultados" };
 
@@ -17,7 +19,17 @@ export default async function OwnersPage({ params, searchParams }: PageProps<"/c
   if (!can(role, "cuentas")) notFound();
   const thisYear = Number(todayISO().slice(0, 4));
   const year = typeof sp.anio === "string" && /^\d{4}$/.test(sp.anio) ? Number(sp.anio) : thisYear;
-  const [owners, summary] = await Promise.all([listOwners(farm.id), yearSummary(farm.id, year)]);
+  const [owners, summary, owed] = await Promise.all([listOwners(farm.id), yearSummary(farm.id, year), balances(farm.id)]);
+  const totalOwed: Money = {};
+  for (const m of owed.values()) for (const [c, v] of Object.entries(m)) if ((v ?? 0) > 0) addMoney(totalOwed, c, v as number);
+  const today = todayISO();
+  const months = [0, 1, 2].map((i) => {
+    const d = new Date(`${today.slice(0, 7)}-15T12:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() - i);
+    const v = d.toISOString().slice(0, 7);
+    return { value: v, label: monthName(v) };
+  });
+  const hasBoarders = owners.some((o) => o.kind === "tercero" || o.kind === "socio");
   const base = `/c/${slug}/propietarios`;
 
   return (
@@ -48,14 +60,14 @@ export default async function OwnersPage({ params, searchParams }: PageProps<"/c
               </span>
               <span className="text-[13px] text-muted">
                 {r.heads} cab. hoy · ventas {formatMoney(r.sales)} · gastos {formatMoney(r.expenses)}
-                {Object.keys(r.pension).length ? ` · pensión estimada ${formatMoney(r.pension)}` : ""}
+                {Object.keys(r.pension).length ? ` · pensión ${formatMoney(r.pension)}` : ""}
               </span>
             </li>
           ))}
         </ul>
         <p className="text-xs leading-relaxed text-muted">
           Ventas netas de gastos de la tropa, repartidas por cabeza cuando una tropa mezcla dueños. Lo que no tiene dueño cuenta para el campo.
-          {Object.keys(summary.pensionTotal).length ? ` La pensión es la cuota por ${summary.months} meses, como referencia.` : ""}
+          {Object.keys(summary.pensionTotal).length ? " La pensión es lo cargado en la cuenta de cada uno (o la cuota fija por los meses del año, si no se usa la cuenta)." : ""}
         </p>
       </Card>
 
@@ -82,6 +94,17 @@ export default async function OwnersPage({ params, searchParams }: PageProps<"/c
         </Card>
       ))}
 
+      {hasBoarders ? (
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <SectionTitle>Por cobrar</SectionTitle>
+            <span className="text-lg font-semibold tabular-nums">{Object.keys(totalOwed).length ? formatMoney(totalOwed) : "Nada"}</span>
+          </div>
+          <ChargeMonthForm slug={slug} months={months} />
+          <p className="text-[13px] text-muted">Carga la pensión del mes a todos los que tienen tarifa. Si ya estaba cargada, no se repite.</p>
+        </Card>
+      ) : null}
+
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <SectionTitle>Propietarios</SectionTitle>
@@ -96,7 +119,12 @@ export default async function OwnersPage({ params, searchParams }: PageProps<"/c
                     <span className="text-[15px] font-semibold">{o.name}</span>
                     <span className="text-[13px] text-muted">{ownerKindLabel(o.kind)}</span>
                   </span>
-                  <span className="text-[15px] font-semibold tabular-nums">{o.heads} cab.</span>
+                  <span className="flex flex-col items-end">
+                    <span className="text-[15px] font-semibold tabular-nums">{o.heads} cab.</span>
+                    {owed.get(o.id) && Object.values(owed.get(o.id)!).some((v) => (v ?? 0) > 0.5) ? (
+                      <span className="text-[13px] font-semibold whitespace-nowrap text-warn-fg tabular-nums">Debe {formatMoney(owed.get(o.id)!)}</span>
+                    ) : null}
+                  </span>
                 </Link>
               </li>
             ))}

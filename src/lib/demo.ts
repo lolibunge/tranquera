@@ -203,6 +203,30 @@ async function loadOwners(tx: Tx, farmId: string, userId: string, today: string)
   await set(demo.filter((a) => a.species === "caballo").map((a) => a.id), boarder);
   await set(demo.filter((a) => a.species === "vacuno" && ["ternero", "ternera"].includes(a.category ?? "")).map((a) => a.id), pool);
 
+  // Pensión de los caballos de Rodríguez: tarifa por caballo, un mes cobrado y pagado a medias.
+  const horses = demo.filter((a) => a.species === "caballo");
+  const start = addDays(today, -120);
+  const rates = await tx
+    .insert(schema.boardRates)
+    .values(horses.map((h) => ({ farmId, ownerId: boarder, animalId: h.id, monthly: "50.00", currency: "USD", from: start })))
+    .returning({ id: schema.boardRates.id });
+  const lastMonth = addDays(`${today.slice(0, 7)}-01`, -1);
+  await tx.insert(schema.ledger).values([
+    ...rates.map((r, i) => ({
+      farmId,
+      ownerId: boarder,
+      kind: "cargo",
+      date: lastMonth,
+      amount: "50.00",
+      currency: "USD",
+      concept: `Pensión del mes pasado · caballo ${i + 1}`,
+      period: lastMonth.slice(0, 7),
+      rateId: r.id,
+      createdBy: userId,
+    })),
+    { farmId, ownerId: boarder, kind: "pago", date: addDays(today, -4), amount: "200.00", currency: "USD", concept: "Transferencia", createdBy: userId },
+  ]);
+
   await tx.insert(schema.expenses).values([
     { farmId, date: addDays(today, -10), concept: "Sueldo peón (prueba)", category: "personal", amount: "850.00", currency: "USD", createdBy: userId },
     { farmId, date: addDays(today, -8), concept: "Gasoil (prueba)", category: "combustible", amount: "9800.00", currency: "UYU", supplier: "Estación Prueba", createdBy: userId },

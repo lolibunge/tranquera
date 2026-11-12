@@ -57,6 +57,13 @@
       "when": 1794513544489,
       "tag": "0007_etapa4",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794518924359,
+      "tag": "0008_cuenta",
+      "breakpoints": true
     }
   ]
 }

@@ -181,6 +181,8 @@ export const expenseInput = z.object({
   ownerId: z.string().uuid().nullable(),
   supplier: z.string().trim().max(80).optional(),
   notes: z.string().trim().max(500).optional(),
+  /** Además de imputarlo, cargarlo en la cuenta del propietario para cobrárselo. */
+  bill: z.boolean().optional(),
 });
 
 export async function createExpense(farmId: string, userId: string, raw: z.input<typeof expenseInput>) {
@@ -189,24 +191,45 @@ export async function createExpense(farmId: string, userId: string, raw: z.input
   const d = parsed.data;
   if (d.date > todayISO()) return { ok: false as const, error: "La fecha no puede ser futura." };
   if (d.ownerId && !(await getOwner(farmId, d.ownerId))) return { ok: false as const, error: "Elegí un propietario de la lista." };
-  await db.insert(schema.expenses).values({
-    farmId,
-    date: d.date,
-    concept: d.concept,
-    category: d.category,
-    amount: d.amount.toFixed(2),
-    currency: d.currency,
-    ownerId: d.ownerId,
-    supplier: d.supplier || null,
-    notes: d.notes || null,
-    createdBy: userId,
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(schema.expenses)
+      .values({
+        farmId,
+        date: d.date,
+        concept: d.concept,
+        category: d.category,
+        amount: d.amount.toFixed(2),
+        currency: d.currency,
+        ownerId: d.ownerId,
+        supplier: d.supplier || null,
+        notes: d.notes || null,
+        createdBy: userId,
+      })
+      .returning({ id: schema.expenses.id });
+    if (d.bill && d.ownerId) {
+      await tx.insert(schema.ledger).values({
+        farmId,
+        ownerId: d.ownerId,
+        kind: "cargo",
+        date: d.date,
+        amount: d.amount.toFixed(2),
+        currency: d.currency,
+        concept: d.concept,
+        expenseId: row.id,
+        createdBy: userId,
+      });
+    }
   });
   return { ok: true as const };
 }
 
 export async function deleteExpense(farmId: string, id: string) {
   if (!z.string().uuid().safeParse(id).success) return;
-  await db.delete(schema.expenses).where(and(eq(schema.expenses.id, id), eq(schema.expenses.farmId, farmId)));
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.ledger).where(and(eq(schema.ledger.farmId, farmId), eq(schema.ledger.expenseId, id)));
+    await tx.delete(schema.expenses).where(and(eq(schema.expenses.id, id), eq(schema.expenses.farmId, farmId)));
+  });
 }
 
 export async function listExpenses(farmId: string, from: string, to: string) {
@@ -282,10 +305,16 @@ export async function yearSummary(farmId: string, year: number) {
   // Pensión: cuota mensual por los meses del año transcurridos (es una referencia, no un cobro registrado).
   const today = todayISO();
   const months = Number(today.slice(0, 4)) > year ? 12 : Number(today.slice(0, 4)) < year ? 0 : Number(today.slice(5, 7));
+  // Pensión: lo cargado en la cuenta ese año; si no se usa la cuenta, la cuota fija como estimación.
+  const charged = await db
+    .select({ ownerId: schema.ledger.ownerId, currency: schema.ledger.currency, total: sql<number>`sum(${schema.ledger.amount})::float` })
+    .from(schema.ledger)
+    .where(and(eq(schema.ledger.farmId, farmId), eq(schema.ledger.kind, "cargo"), sql`${schema.ledger.period} like ${`${year}-%`}`))
+    .groupBy(schema.ledger.ownerId, schema.ledger.currency);
   for (const o of owners) {
-    if (o.kind === "tercero" && o.monthlyFee && o.heads > 0) {
-      addMoney(results.get(o.id)!.pension, o.currency, Number(o.monthlyFee) * months);
-    }
+    const mine = charged.filter((c) => c.ownerId === o.id);
+    if (mine.length) for (const c of mine) addMoney(results.get(o.id)!.pension, c.currency, c.total);
+    else if (o.kind === "tercero" && o.monthlyFee && o.heads > 0) addMoney(results.get(o.id)!.pension, o.currency, Number(o.monthlyFee) * months);
   }
 
   const rows = [...results.values()].filter((r) => r.heads || Object.keys(r.sales).length || Object.keys(r.expenses).length || r.kind !== "tercero");

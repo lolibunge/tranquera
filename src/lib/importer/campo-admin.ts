@@ -54,8 +54,8 @@ const PLAN: Record<string, { label: string; target: string | null }> = {
   farm_visits: { label: "Agenda y visitas", target: "Tareas del calendario" },
   pasture_measurements: { label: "Mediciones de pasto", target: "Mediciones de pasto" },
   paddock_work_events: { label: "Laboreos", target: "Laboreos" },
-  owner_billing_rates: { label: "Tarifas de pensión por caballo", target: null },
-  owner_ledger_entries: { label: "Cuenta de propietarios (cargos y pagos)", target: null },
+  owner_billing_rates: { label: "Tarifas de pensión por caballo", target: "Pensión (tarifas)" },
+  owner_ledger_entries: { label: "Cuenta de propietarios (cargos y pagos)", target: "Cuenta del propietario" },
   feed_events: { label: "Raciones dadas", target: null },
   horse_feed_plan_items: { label: "Plan de ración", target: null },
   horse_feed_slot_entries: { label: "Raciones marcadas por turno", target: null },
@@ -209,14 +209,21 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
     .select({ table: schema.importArchive.table, sourceId: schema.importArchive.sourceId, targetId: schema.importArchive.targetId })
     .from(schema.importArchive)
     .where(and(eq(schema.importArchive.farmId, farmId), eq(schema.importArchive.source, SOURCE)));
-  const done = new Map(prior.map((p) => [`${p.table}:${p.sourceId}`, p.targetId]));
+  // Solo cuenta como hecho lo que ya tiene destino: lo que quedó solo en el archivo
+  // se vuelve a intentar (por ejemplo, cuando Tranquera suma una función nueva).
+  const done = new Map(prior.filter((p) => p.targetId).map((p) => [`${p.table}:${p.sourceId}`, p.targetId]));
   const archived = new Set(prior.map((p) => `${p.table}:${p.sourceId}`));
   const pending: (typeof schema.importArchive.$inferInsert)[] = [];
+  const relinked: { table: string; sourceId: string; targetTable: string; targetId: string }[] = [];
   const archive = (table: string, r: Row, targetTable: string | null, targetId: string | null) => {
     const sourceId = String(r.id ?? r.module_key ?? json(r).slice(0, 200));
     const key = `${table}:${sourceId}`;
+    const wasDone = done.has(key);
     if (targetId) done.set(key, targetId);
-    if (archived.has(key)) return;
+    if (archived.has(key)) {
+      if (targetId && targetTable && !wasDone) relinked.push({ table, sourceId, targetTable, targetId });
+      return;
+    }
     archived.add(key);
     pending.push({ farmId, source: SOURCE, table, sourceId, data: json(r), targetTable, targetId });
   };
@@ -253,10 +260,17 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
       const fee = rates
         .filter((x) => String(x.owner_id) === String(r.id) && !x.valid_to)
         .reduce((n, x) => n + (num(x.rate_per_month) ?? 0), 0);
+      // El dueño "campo" se une al que ya exista en Tranquera (hay uno solo por campo).
       const [existing] = await tx
         .select({ id: schema.owners.id })
         .from(schema.owners)
-        .where(and(eq(schema.owners.farmId, farmId), dsql`lower(${schema.owners.name}) = lower(${name})`))
+        .where(
+          and(
+            eq(schema.owners.farmId, farmId),
+            eq(schema.owners.active, true),
+            own ? dsql`(lower(${schema.owners.name}) = lower(${name}) or ${schema.owners.kind} = 'campo')` : dsql`lower(${schema.owners.name}) = lower(${name})`,
+          ),
+        )
         .limit(1);
       if (existing) {
         id = existing.id;
@@ -269,7 +283,7 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
             name,
             kind: own ? "campo" : "tercero",
             phone: str(r.phone),
-            monthlyFee: !own && fee > 0 ? fee.toFixed(2) : null,
+            monthlyFee: !own && fee > 0 && !rows("owner_billing_rates").length ? fee.toFixed(2) : null,
             currency: opts.ownersCurrency,
             notes: [str(r.email), str(r.notes)].filter(Boolean).join(" · ") || null,
           })
@@ -688,6 +702,48 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
     archive("owner_feed_purchases", r, "gastos", row.id);
   }
 
+  // ---- Pensión y cuenta corriente ----
+  for (const r of rows("owner_billing_rates")) {
+    const ownerId = target("owners", r.owner_id);
+    const from = day(r.valid_from);
+    const monthly = num(r.rate_per_month);
+    if (!isNew("owner_billing_rates", r.id) || !ownerId || !from || monthly === null) {
+      archive("owner_billing_rates", r, null, null);
+      continue;
+    }
+    const [row] = await tx
+      .insert(schema.boardRates)
+      .values({ farmId, ownerId, animalId: animal(r.horse_id), monthly: monthly.toFixed(2), currency: opts.ownersCurrency, from, to: day(r.valid_to), notes: str(r.notes) })
+      .returning({ id: schema.boardRates.id });
+    stat("owner_billing_rates").created++;
+    archive("owner_billing_rates", r, "tarifas", row.id);
+  }
+  for (const r of rows("owner_ledger_entries")) {
+    const ownerId = target("owners", r.owner_id);
+    const amount = num(r.amount);
+    if (!isNew("owner_ledger_entries", r.id) || !ownerId || amount === null || amount === 0) {
+      archive("owner_ledger_entries", r, null, null);
+      continue;
+    }
+    const pago = String(r.entry_type) === "payment";
+    const [row] = await tx
+      .insert(schema.ledger)
+      .values({
+        farmId,
+        ownerId,
+        kind: pago ? "pago" : "cargo",
+        date: day(r.entry_date) ?? today,
+        amount: Math.abs(amount).toFixed(2),
+        currency: opts.ownersCurrency,
+        concept: (str(r.description) ?? (pago ? "Pago" : "Cargo")).slice(0, 120),
+        notes: str(r.notes),
+        createdBy: userId,
+      })
+      .returning({ id: schema.ledger.id });
+    stat("owner_ledger_entries").created++;
+    archive("owner_ledger_entries", r, "cuenta_movimientos", row.id);
+  }
+
   // ---- Agenda → tareas ----
   const VISIT: Record<string, string> = { visit: "Visita", deworming: "Desparasitada", farrier: "Desvasada / herrado", vet: "Veterinaria", note: "Nota" };
   for (const r of rows("farm_visits")) {
@@ -768,6 +824,19 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
   for (let i = 0; i < pending.length; i += 500) {
     await tx.insert(schema.importArchive).values(pending.slice(i, i + 500)).onConflictDoNothing();
   }
+  for (const r of relinked) {
+    await tx
+      .update(schema.importArchive)
+      .set({ targetTable: r.targetTable, targetId: r.targetId })
+      .where(
+        and(
+          eq(schema.importArchive.farmId, farmId),
+          eq(schema.importArchive.source, SOURCE),
+          eq(schema.importArchive.table, r.table),
+          eq(schema.importArchive.sourceId, r.sourceId),
+        ),
+      );
+  }
 
   // ---- Informe ----
   const archivedCounts = await tx
@@ -784,7 +853,7 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
     .sort((a, b) => Number(b.target !== null) - Number(a.target !== null) || a.label.localeCompare(b.label, "es"));
   const missing = tables.filter((t) => t.archived < t.source);
   if (missing.length) warnings.push(`No quedaron archivadas todas las filas de: ${missing.map((m) => m.label).join(", ")}.`);
-  for (const t of ["owner_ledger_entries", "owner_billing_rates", "horse_feed_plan_items"]) {
+  for (const t of ["horse_feed_plan_items"]) {
     if (rows(t).length) warnings.push(`${planFor(t).label}: ${rows(t).length} registros quedan guardados en el archivo; se pueden activar más adelante.`);
   }
   return { tables, warnings, dryRun };

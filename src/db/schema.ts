@@ -503,6 +503,56 @@ export const ownerShares = pgTable(
   (t) => [primaryKey({ columns: [t.poolId, t.partnerId] })],
 );
 
+/** Pensión mensual por animal (o general del propietario si no tiene animal), con vigencia. */
+export const boardRates = pgTable(
+  "tarifas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    ownerId: uuid("propietario_id")
+      .notNull()
+      .references(() => owners.id, { onDelete: "cascade" }),
+    animalId: uuid("animal_id").references((): AnyPgColumn => animals.id, { onDelete: "set null" }),
+    monthly: numeric("mensual", { precision: 12, scale: 2 }).notNull(),
+    currency: text("moneda").notNull().default("UYU"),
+    from: date("desde").notNull(),
+    to: date("hasta"),
+    notes: text("notas"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("tarifas_propietario_idx").on(t.ownerId)],
+);
+
+/** Cuenta corriente de cada propietario: cargos (lo que debe) y pagos. */
+export const ledger = pgTable(
+  "cuenta_movimientos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    ownerId: uuid("propietario_id")
+      .notNull()
+      .references(() => owners.id, { onDelete: "cascade" }),
+    kind: text("tipo").notNull(), // cargo | pago
+    date: date("fecha").notNull(),
+    amount: numeric("monto", { precision: 14, scale: 2 }).notNull(),
+    currency: text("moneda").notNull().default("UYU"),
+    concept: text("concepto").notNull(),
+    notes: text("notas"),
+    animalId: uuid("animal_id").references((): AnyPgColumn => animals.id, { onDelete: "set null" }),
+    /** Pensión generada: mes AAAA-MM y tarifa, para no duplicarla. */
+    period: text("periodo"),
+    rateId: uuid("tarifa_id").references(() => boardRates.id, { onDelete: "set null" }),
+    expenseId: uuid("gasto_id"),
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("cuenta_propietario_idx").on(t.ownerId, t.date), uniqueIndex("cuenta_pension_unq").on(t.rateId, t.period)],
+);
+
 /** Gastos del campo, con categoría y a quién se imputan (opcional). */
 export const expenses = pgTable(
   "gastos",

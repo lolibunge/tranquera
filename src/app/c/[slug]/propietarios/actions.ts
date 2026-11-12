@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getFarmAccess } from "@/lib/farms";
 import { can } from "@/lib/roles";
 import { parseAmount } from "@/lib/number";
+import { addEntry, addRate, chargeMonth, deleteEntry, endRate } from "@/lib/ledger";
 import { archiveOwner, assignAnimals, createExpense, deleteExpense, saveOwner, savePoolShares } from "@/lib/owners";
 
 export type OwnerState = { error?: string; ok?: string; at?: number };
@@ -75,6 +76,7 @@ export async function createExpenseAction(_prev: OwnerState, f: FormData): Promi
     ownerId: t(f, "ownerId") || null,
     supplier: t(f, "supplier"),
     notes: t(f, "notes"),
+    bill: f.get("bill") === "on",
   });
   if (!result.ok) return { error: result.error };
   revalidatePath(`/c/${a.farm.slug}`, "layout");
@@ -86,4 +88,66 @@ export async function deleteExpenseAction(f: FormData) {
   if (!a) return;
   await deleteExpense(a.farm.id, t(f, "id"));
   revalidatePath(`/c/${a.farm.slug}`, "layout");
+}
+
+export async function addEntryAction(_prev: OwnerState, f: FormData): Promise<OwnerState> {
+  const a = await access(f);
+  if (!a) return { error: "No tenés permiso." };
+  const kind = t(f, "kind") === "pago" ? "pago" : "cargo";
+  const result = await addEntry(a.farm.id, a.user.id, {
+    ownerId: t(f, "id"),
+    kind,
+    date: t(f, "date"),
+    amount: t(f, "amount"),
+    currency: t(f, "currency") === "USD" ? "USD" : "UYU",
+    concept: t(f, "concept"),
+    notes: t(f, "notes"),
+  });
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/c/${a.farm.slug}`, "layout");
+  return { ok: kind === "pago" ? "Pago registrado." : "Cargo agregado.", at: Date.now() };
+}
+
+export async function deleteEntryAction(f: FormData) {
+  const a = await access(f);
+  if (!a) return;
+  await deleteEntry(a.farm.id, t(f, "entryId"));
+  revalidatePath(`/c/${a.farm.slug}`, "layout");
+}
+
+export async function addRateAction(_prev: OwnerState, f: FormData): Promise<OwnerState> {
+  const a = await access(f);
+  if (!a) return { error: "No tenés permiso." };
+  const result = await addRate(a.farm.id, {
+    ownerId: t(f, "id"),
+    animalId: t(f, "animalId") || null,
+    monthly: t(f, "monthly"),
+    currency: t(f, "currency") === "USD" ? "USD" : "UYU",
+    from: t(f, "from"),
+    notes: t(f, "notes"),
+  });
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/c/${a.farm.slug}`, "layout");
+  return { ok: "Tarifa guardada.", at: Date.now() };
+}
+
+export async function endRateAction(f: FormData) {
+  const a = await access(f);
+  if (!a) return;
+  await endRate(a.farm.id, t(f, "rateId"), t(f, "date"));
+  revalidatePath(`/c/${a.farm.slug}`, "layout");
+}
+
+export async function chargeMonthAction(_prev: OwnerState, f: FormData): Promise<OwnerState> {
+  const a = await access(f);
+  if (!a) return { error: "No tenés permiso." };
+  const result = await chargeMonth(a.farm.id, a.user.id, t(f, "period"), t(f, "id") || undefined);
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/c/${a.farm.slug}`, "layout");
+  const { created, skipped } = result.value;
+  if (!created && !skipped) return { error: "No hay tarifas vigentes ese mes." };
+  return {
+    ok: created ? `${created === 1 ? "Se cargó 1 pensión" : `Se cargaron ${created} pensiones`}.${skipped ? ` ${skipped} ya estaba${skipped === 1 ? "" : "n"}.` : ""}` : "Esas pensiones ya estaban cargadas.",
+    at: Date.now(),
+  };
 }
