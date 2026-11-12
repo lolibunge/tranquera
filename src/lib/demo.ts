@@ -227,6 +227,23 @@ async function loadOwners(tx: Tx, farmId: string, userId: string, today: string)
     { farmId, ownerId: boarder, kind: "pago", date: addDays(today, -4), amount: "200.00", currency: "USD", concept: "Transferencia", createdBy: userId },
   ]);
 
+  // Ración diaria de los caballos de pensión (si están los insumos de prueba).
+  const feeds = await tx
+    .select({ id: schema.supplies.id, name: schema.supplies.name })
+    .from(schema.supplies)
+    .where(and(eq(schema.supplies.farmId, farmId), inArray(schema.supplies.name, ["Ración 18% (prueba)", "Fardos de alfalfa (prueba)"])));
+  const ration = feeds.find((f) => f.name.startsWith("Ración"));
+  const hay = feeds.find((f) => f.name.startsWith("Fardos"));
+  if (ration && hay && horses.length) {
+    await tx.insert(schema.feedPlans).values(
+      horses.flatMap((h) => [
+        { farmId, animalId: h.id, supplyId: ration.id, slot: "manana", quantity: 0.1 },
+        { farmId, animalId: h.id, supplyId: ration.id, slot: "noche", quantity: 0.1 },
+        { farmId, animalId: h.id, supplyId: hay.id, slot: "tarde", quantity: 0.25 },
+      ]),
+    );
+  }
+
   await tx.insert(schema.expenses).values([
     { farmId, date: addDays(today, -10), concept: "Sueldo peón (prueba)", category: "personal", amount: "850.00", currency: "USD", createdBy: userId },
     { farmId, date: addDays(today, -8), concept: "Gasoil (prueba)", category: "combustible", amount: "9800.00", currency: "UYU", supplier: "Estación Prueba", createdBy: userId },

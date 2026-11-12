@@ -7,6 +7,10 @@ import { CATALOG, SEX_LABEL, categoryOf, formatTag, isSpeciesKey, type Sex } fro
 import { controlsForAnimal, healthHistory } from "@/lib/health";
 import { animalMovements } from "@/lib/paddocks";
 import { animalHerds } from "@/lib/herds";
+import { animalPlan, SLOTS, slotLabel } from "@/lib/feeding";
+import { formatQty, listSupplies, unitFor } from "@/lib/stock";
+import { PlanForm } from "../../racion/forms";
+import { removePlanAction } from "../../racion/actions";
 import { DEATH_CAUSES } from "@/lib/sales";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -55,6 +59,8 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
     .join(" · ");
   const canLoad = can(role, "cargar");
   const canHealth = can(role, "sanidad");
+  const [plan, supplies] = a.isLot || a.status !== "activo" ? [[], []] : await Promise.all([animalPlan(farm.id, a.id), listSupplies(farm.id)]);
+  const feedSupplies = [...supplies].sort((x, y) => Number(y.category === "alimento") - Number(x.category === "alimento") || x.name.localeCompare(y.name, "es"));
   const statusLabel = { vendido: "Vendido", muerto: "Muerto", baja: "Dado de baja", activo: "" } as const;
 
   return (
@@ -151,6 +157,52 @@ export default async function AnimalPage({ params }: PageProps<"/c/[slug]/animal
         </div>
         {canHealth && a.status === "activo" ? <HealthForm slug={slug} animalId={a.id} species={a.species} today={today} /> : null}
       </section>
+
+      {plan.length || (canLoad && feedSupplies.length) ? (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <SectionTitle>Ración</SectionTitle>
+            {plan.length ? (
+              <Link href={`/c/${slug}/racion`} className="py-1 text-[15px] font-semibold text-brand">
+                Ración de hoy
+              </Link>
+            ) : null}
+          </div>
+          {plan.length ? (
+            <ul className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+              {plan.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 border-b border-chip px-4 py-2.5 last:border-b-0">
+                  <span className="flex flex-col">
+                    <span className="text-[15px] font-semibold">{slotLabel(p.slot)}</span>
+                    <span className="text-[13px] text-muted">
+                      {formatQty(p.quantity)} {unitFor(p.quantity, p.unit)} de {p.supply}
+                    </span>
+                  </span>
+                  {canLoad ? (
+                    <form action={removePlanAction}>
+                      <input type="hidden" name="slug" value={slug} />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" aria-label={`Sacar ${p.supply} de la ${slotLabel(p.slot).toLowerCase()}`} className="flex size-9 items-center justify-center rounded-lg text-muted hover:bg-chip">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                      </button>
+                    </form>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">No tiene ración diaria.</p>
+          )}
+          {canLoad && feedSupplies.length ? (
+            <details className="rounded-2xl border border-line bg-surface p-4">
+              <summary className="cursor-pointer text-[15px] font-semibold">Agregar a la ración</summary>
+              <div className="mt-4">
+                <PlanForm slug={slug} animalId={a.id} supplies={feedSupplies.map((s) => ({ id: s.id, name: s.name, unit: s.unit }))} slots={SLOTS} />
+              </div>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <SectionTitle>Historial</SectionTitle>

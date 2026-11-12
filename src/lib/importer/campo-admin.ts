@@ -57,8 +57,8 @@ const PLAN: Record<string, { label: string; target: string | null }> = {
   owner_billing_rates: { label: "Tarifas de pensión por caballo", target: "Pensión (tarifas)" },
   owner_ledger_entries: { label: "Cuenta de propietarios (cargos y pagos)", target: "Cuenta del propietario" },
   feed_events: { label: "Raciones dadas", target: null },
-  horse_feed_plan_items: { label: "Plan de ración", target: null },
-  horse_feed_slot_entries: { label: "Raciones marcadas por turno", target: null },
+  horse_feed_plan_items: { label: "Plan de ración", target: "Ración diaria" },
+  horse_feed_slot_entries: { label: "Raciones marcadas por turno", target: "Ración diaria (turnos dados)" },
   paddock_shared_grazing: { label: "Pastoreo por grupo", target: null },
   movement_batches: { label: "Tandas de movimientos", target: null },
   expense_split_drafts: { label: "Borradores de reparto de gastos", target: null },
@@ -744,6 +744,41 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
     archive("owner_ledger_entries", r, "cuenta_movimientos", row.id);
   }
 
+  // ---- Plan de ración y turnos dados (el stock ya quedó ajustado al saldo de origen) ----
+  const SLOT: Record<string, string> = { morning: "manana", afternoon: "tarde", night: "noche" };
+  for (const r of rows("horse_feed_plan_items")) {
+    const animalId = animal(r.horse_id);
+    const supplyId = target("feed_items", r.feed_item_id);
+    const slot = SLOT[String(r.feed_slot)];
+    const quantity = num(r.quantity);
+    if (!isNew("horse_feed_plan_items", r.id) || !animalId || !supplyId || !slot || !quantity) {
+      archive("horse_feed_plan_items", r, null, null);
+      continue;
+    }
+    const [row] = await tx.insert(schema.feedPlans).values({ farmId, animalId, supplyId, slot, quantity, notes: str(r.notes) }).returning({ id: schema.feedPlans.id });
+    stat("horse_feed_plan_items").created++;
+    archive("horse_feed_plan_items", r, "raciones", row.id);
+  }
+  const roundsByKey = new Map<string, Row[]>();
+  for (const r of rows("horse_feed_slot_entries")) {
+    const d = day(r.event_date);
+    const slot = SLOT[String(r.feed_slot)];
+    if (!d || !slot) continue;
+    roundsByKey.set(`${d}|${slot}`, [...(roundsByKey.get(`${d}|${slot}`) ?? []), r]);
+  }
+  for (const [key, entries] of roundsByKey) {
+    const [d, slot] = key.split("|");
+    const fresh = entries.filter((e) => isNew("horse_feed_slot_entries", e.id));
+    if (!fresh.length) continue;
+    const [row] = await tx
+      .insert(schema.feedRounds)
+      .values({ farmId, date: d, slot, animals: entries.length, createdBy: userId })
+      .onConflictDoNothing()
+      .returning({ id: schema.feedRounds.id });
+    for (const e of fresh) archive("horse_feed_slot_entries", e, row ? "raciones_dadas" : null, row?.id ?? null);
+    if (row) stat("horse_feed_slot_entries").created++;
+  }
+
   // ---- Agenda → tareas ----
   const VISIT: Record<string, string> = { visit: "Visita", deworming: "Desparasitada", farrier: "Desvasada / herrado", vet: "Veterinaria", note: "Nota" };
   for (const r of rows("farm_visits")) {
@@ -853,8 +888,8 @@ async function importInto(tx: Tx, farmId: string, userId: string, data: SourceDa
     .sort((a, b) => Number(b.target !== null) - Number(a.target !== null) || a.label.localeCompare(b.label, "es"));
   const missing = tables.filter((t) => t.archived < t.source);
   if (missing.length) warnings.push(`No quedaron archivadas todas las filas de: ${missing.map((m) => m.label).join(", ")}.`);
-  for (const t of ["horse_feed_plan_items"]) {
-    if (rows(t).length) warnings.push(`${planFor(t).label}: ${rows(t).length} registros quedan guardados en el archivo; se pueden activar más adelante.`);
+  for (const t of ["feed_events", "paddock_shared_grazing"]) {
+    if (rows(t).length) warnings.push(`${planFor(t).label}: ${rows(t).length} registros quedan guardados en el archivo (el stock y los movimientos ya están).`);
   }
   return { tables, warnings, dryRun };
 }

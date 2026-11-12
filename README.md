@@ -65,5 +65,5 @@ Las fechas de campañas del MGAP (aftosa, DICOSE) están en la tabla `campanas_o
 3. En Tranquera: Más → Traer datos de campo-admin → Probar la conexión → Ensayo → Importar.
 
 La base vieja se abre en modo solo lectura (aunque el usuario pudiera escribir). Cada fila de origen
-queda en `archivo_origen`; importar dos veces no duplica. Cuenta corriente de propietarios, tarifas por
-caballo, plan de ración, pastoreo por grupo y borradores quedan en el archivo, listos para activarse.
+queda en `archivo_origen`; importar dos veces no duplica. Cuenta corriente, tarifas de pensión y plan de ración
+se importan; raciones dadas una por una, pastoreo por grupo y borradores quedan solo en el archivo.

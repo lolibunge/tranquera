@@ -460,6 +460,7 @@ export const supplyMoves = pgTable(
     currency: text("moneda"),
     note: text("nota"),
     sessionId: uuid("jornada_id").references(() => healthSessions.id, { onDelete: "set null" }),
+    feedRoundId: uuid("racion_dada_id"),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -551,6 +552,46 @@ export const ledger = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("cuenta_propietario_idx").on(t.ownerId, t.date), uniqueIndex("cuenta_pension_unq").on(t.rateId, t.period)],
+);
+
+/** Plan de ración: qué come cada animal en cada turno (descuenta del stock al darla). */
+export const feedPlans = pgTable(
+  "raciones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    animalId: uuid("animal_id")
+      .notNull()
+      .references((): AnyPgColumn => animals.id, { onDelete: "cascade" }),
+    supplyId: uuid("insumo_id")
+      .notNull()
+      .references(() => supplies.id, { onDelete: "cascade" }),
+    slot: text("turno").notNull(), // manana | tarde | noche
+    quantity: doublePrecision("cantidad").notNull(),
+    notes: text("notas"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("raciones_animal_idx").on(t.animalId), index("raciones_campo_idx").on(t.farmId, t.slot)],
+);
+
+/** Turno de ración dado: uno por día y turno. Lo consumido queda en insumos_movimientos. */
+export const feedRounds = pgTable(
+  "raciones_dadas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    farmId: uuid("campo_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    date: date("fecha").notNull(),
+    slot: text("turno").notNull(),
+    animals: integer("animales").notNull().default(0),
+    skipped: text("salteados"), // nombres de los que no comieron, si alguno
+    createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("raciones_dadas_unq").on(t.farmId, t.date, t.slot)],
 );
 
 /** Gastos del campo, con categoría y a quién se imputan (opcional). */

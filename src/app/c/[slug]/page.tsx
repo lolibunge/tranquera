@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { hasPlans, roundsOn, SLOTS } from "@/lib/feeding";
+import { todayISO } from "@/lib/dates";
 import type { Metadata } from "next";
 import { getFarmAccess } from "@/lib/farms";
 import { can } from "@/lib/roles";
@@ -29,6 +31,7 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
   const frost = frostDays(forecast);
   const now = forecast?.[0];
   const hasSpecies = species.length > 0;
+  const feeding = (await hasPlans(farm.id)) ? await roundsOn(farm.id, todayISO()) : null;
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center gap-3">
@@ -52,6 +55,18 @@ export default async function FarmHome({ params }: PageProps<"/c/[slug]">) {
             {now.max !== null ? `${Math.round(now.max)}°` : ""}
             <span className="text-base text-muted"> / {now.min !== null ? `${Math.round(now.min)}°` : ""}</span>
           </span>
+        </Link>
+      ) : null}
+
+      {feeding ? (
+        <Link href={`/c/${slug}/racion`} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+          <span className="flex flex-col">
+            <span className="text-[15px] font-semibold">Ración de hoy</span>
+            <span className="text-[13px] text-muted">
+              {SLOTS.map((s) => `${s.label} ${feeding.some((r) => r.slot === s.key) ? "✓" : "pendiente"}`).join(" · ")}
+            </span>
+          </span>
+          <span aria-hidden="true" className="text-muted">›</span>
         </Link>
       ) : null}
 
