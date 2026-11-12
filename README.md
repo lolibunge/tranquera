@@ -50,3 +50,20 @@ Sin `RESEND_API_KEY`, el enlace para entrar se muestra en pantalla en desarrollo
 ## Campañas oficiales
 
 Las fechas de campañas del MGAP (aftosa, DICOSE) están en la tabla `campanas_oficiales`. Cada año se agregan con una migración nueva (ver `drizzle/0002_campanas.sql`).
+
+
+## Migrar un campo desde campo-admin (etapa 4)
+
+1. En la base vieja (Neon del campo), crear un usuario de solo lectura:
+   ```sql
+   create role tranquera_lectura login password '…';
+   grant connect on database neondb to tranquera_lectura;
+   grant usage on schema public to tranquera_lectura;
+   grant select on all tables in schema public to tranquera_lectura;
+   ```
+2. En Vercel (proyecto tranquera), agregar la variable `ORIGEN_<SLUG>` (por ejemplo `ORIGEN_LA_HIDALGUIA`) como Sensitive, con la conexión de ese usuario. Redeploy.
+3. En Tranquera: Más → Traer datos de campo-admin → Probar la conexión → Ensayo → Importar.
+
+La base vieja se abre en modo solo lectura (aunque el usuario pudiera escribir). Cada fila de origen
+queda en `archivo_origen`; importar dos veces no duplica. Cuenta corriente de propietarios, tarifas por
+caballo, plan de ración, pastoreo por grupo y borradores quedan en el archivo, listos para activarse.

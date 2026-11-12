@@ -31,6 +31,7 @@ export default async function MorePage({ params }: PageProps<"/c/[slug]/mas">) {
     { href: `${base}/ventas`, label: "Ventas", sub: "Tropas vendidas y resumen del año" },
     { href: `${base}/clima`, label: "Clima y lluvias", sub: "Pronóstico, lluvias y heladas" },
     { href: `${base}/usuarios`, label: "Equipo", sub: can(role, "usuarios") ? "Invitar y manejar roles" : "Quiénes están en el campo" },
+    can(role, "dueños") && { href: `${base}/migracion`, label: "Traer datos de campo-admin", sub: "Migrar del sistema anterior" },
     { href: "/cuenta", label: "Mi cuenta", sub: user.email ?? formatPhone(user.phone) },
     { href: "/campos?todos", label: "Cambiar de campo", sub: "Ver todos tus campos" },
   ].filter(Boolean) as { href: string; label: string; sub: string }[];
