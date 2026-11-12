@@ -1,26 +1,67 @@
 @import "tailwindcss";
 
+/*
+  Estilo base de Tranquera (ver lienzo "Campo v4 · Pantallas clave").
+  --brand y --accent los pone cada campo; el resto es fijo.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --brand: #7a4a2a;
+  --brand-strong: color-mix(in srgb, var(--brand) 78%, black);
+  --brand-soft: color-mix(in srgb, var(--brand) 12%, white);
+  --accent: #c9733d;
+  --ground: #f6f3ee;
+  --surface: #ffffff;
+  --field: #fffdfa;
+  --line: #e4ddd3;
+  --line-strong: #d6ccbf;
+  --chip: #efe8de;
+  --ink: #231a14;
+  --ink-2: #4a3d33;
+  --muted: #6b5d52;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-field: var(--field);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-chip: var(--chip);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+
+  --color-ok-bg: #e3f1e4;
+  --color-ok-fg: #1f5a2c;
+  --color-ok-dot: #2e7d3e;
+  --color-warn-bg: #fdf0d5;
+  --color-warn-fg: #8a4b05;
+  --color-warn-dot: #c26a06;
+  --color-bad-bg: #fbe4e2;
+  --color-bad-fg: #9b1c12;
+  --color-bad-dot: #b42318;
+  --color-info-bg: #e7ebf3;
+  --color-info-fg: #26385c;
+
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Bricolage Grotesque", Inter, system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--ground);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand) 55%, white);
+  outline-offset: 2px;
 }
