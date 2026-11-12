@@ -73,15 +73,49 @@ export function pointInPolygon(px: number, py: number, poly: [number, number][])
   return inside;
 }
 
-/** Punto para escribir el nombre: centro del contorno. */
+/** Punto para escribir el nombre: centroide del área (cae adentro en formas normales). */
 export function centerOf(shape: MapShape): [number, number] | null {
   const poly = outline(shape);
   if (!poly) return null;
+  let area = 0;
   let cx = 0;
   let cy = 0;
-  for (const [x, y] of poly) {
-    cx += x;
-    cy += y;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const cross = poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
+    area += cross;
+    cx += (poly[j][0] + poly[i][0]) * cross;
+    cy += (poly[j][1] + poly[i][1]) * cross;
   }
-  return [cx / poly.length, cy / poly.length];
+  if (Math.abs(area) < 1e-6) {
+    const [x0, y0, x1, y1] = bboxOf(poly);
+    return [(x0 + x1) / 2, (y0 + y1) / 2];
+  }
+  return [cx / (3 * area), cy / (3 * area)];
+}
+
+export function bboxOf(poly: [number, number][]): [number, number, number, number] {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of poly) {
+    if (x < x0) x0 = x;
+    if (y < y0) y0 = y;
+    if (x > x1) x1 = x;
+    if (y > y1) y1 = y;
+  }
+  return [x0, y0, x1, y1];
+}
+
+/**
+ * Dónde y de qué tamaño escribir un nombre adentro de la forma.
+ * Si no entra legible, devuelve null (el nombre se ve al tocar).
+ */
+export function labelFor(shape: MapShape, text: string, maxSize: number): { x: number; y: number; size: number } | null {
+  const poly = outline(shape);
+  const c = centerOf(shape);
+  if (!poly || !c) return null;
+  const [x0, y0, x1, y1] = bboxOf(poly);
+  const width = x1 - x0;
+  const height = y1 - y0;
+  const size = Math.min(maxSize, (width * 0.9) / Math.max(3, text.length * 0.58), height * 0.45);
+  if (size < maxSize * 0.4) return null;
+  return { x: c[0], y: c[1] + size * 0.35, size };
 }

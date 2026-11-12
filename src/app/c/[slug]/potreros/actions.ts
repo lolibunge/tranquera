@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getFarmAccess } from "@/lib/farms";
 import { can, type Permission } from "@/lib/roles";
-import { archivePaddock, deleteMap, moveAnimals, nameShape, saveMap, savePaddock } from "@/lib/paddocks";
+import { archivePaddock, archiveUnmapped, deleteMap, moveAnimals, nameShape, saveMap, savePaddock } from "@/lib/paddocks";
 
 export type PaddockState = { error?: string; ok?: string; at?: number };
 
@@ -50,6 +50,7 @@ export async function uploadMapAction(_prev: PaddockState, formData: FormData): 
     `Mapa guardado con ${result.names.length} potreros con nombre${result.fromText ? ` (${result.fromText} tomados de los textos del mapa)` : ""}.`,
     result.created ? `Se crearon ${result.created} potreros nuevos.` : "",
     result.unnamed ? `Quedan ${result.unnamed} divisiones sin nombre: tocá "Nombrar las divisiones".` : "",
+    result.orphans ? `${result.orphans} potreros que tenías no están en este mapa: abajo podés archivarlos.` : "",
   ];
   return { ok: parts.filter(Boolean).join(" "), at: Date.now() };
 }
@@ -89,4 +90,17 @@ export async function nameShapeAction(_prev: PaddockState, formData: FormData): 
   if (!result.ok) return { error: result.error };
   revalidatePath(`/c/${access.farm.slug}`, "layout");
   return { ok: formData.get("background") === "1" ? "Marcada como fondo." : `Guardado: ${text(formData, "name")}.`, at: Date.now() };
+}
+
+export async function archiveUnmappedAction(_prev: PaddockState, formData: FormData): Promise<PaddockState> {
+  const { access, denied } = await guard(formData, "configurar");
+  if (denied) return { error: denied };
+  const r = await archiveUnmapped(access.farm.id);
+  revalidatePath(`/c/${access.farm.slug}`, "layout");
+  return {
+    ok:
+      `Se archivaron ${r.archived} potreros.` +
+      (r.withAnimals.length ? ` Quedan ${r.withAnimals.length} con animales (${r.withAnimals.join(", ")}): movelos y volvé a archivar.` : ""),
+    at: Date.now(),
+  };
 }

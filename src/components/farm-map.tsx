@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createElement } from "react";
 import type { FarmMap } from "@/lib/svg-map";
-import { centerOf } from "@/lib/svg-geometry";
+import { labelFor } from "@/lib/svg-geometry";
 import type { PaddockSummary } from "@/lib/paddocks";
 
 /**
@@ -11,7 +11,7 @@ import type { PaddockSummary } from "@/lib/paddocks";
 export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: PaddockSummary[]; slug: string }) {
   const byName = new Map(paddocks.map((p) => [p.svgId?.toLowerCase() ?? p.name.toLowerCase(), p]));
   const vb = map.viewBox.split(/[\s,]+/).map(Number);
-  const fontSize = Math.max(vb[2], vb[3]) / 32;
+  const fontSize = Math.max(vb[2], vb[3]) / 45;
   const labeled = new Set<string>();
   return (
     <figure className="flex flex-col gap-2">
@@ -33,19 +33,19 @@ export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: P
             if (!p) return <g key={i}>{el}</g>;
             const status = p.heads > 0 ? `${p.heads} cabezas` : p.restDays !== null ? `descansa hace ${p.restDays} días` : "vacío";
             // Un nombre por potrero (aunque tenga varias formas).
-            const point = labeled.has(p.id) ? null : centerOf(shape);
-            if (point) labeled.add(p.id);
+            const label = labeled.has(p.id) ? null : labelFor(shape, p.name, fontSize);
+            if (label) labeled.add(p.id);
             return (
               <Link key={i} href={`/c/${slug}/potreros/${p.id}`} aria-label={`${p.name}: ${status}`}>
                 <title>{`${p.name} · ${status}`}</title>
                 {el}
-                {point ? (
+                {label ? (
                   <g transform={shape.transform || undefined} pointerEvents="none">
-                    <text x={point[0]} y={point[1]} textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="#231a14" stroke="#fffdf9" strokeWidth={fontSize / 5} paintOrder="stroke">
+                    <text x={label.x} y={label.y} textAnchor="middle" fontSize={label.size} fontWeight={600} fill="#231a14" stroke="#fffdf9" strokeWidth={label.size / 5} paintOrder="stroke">
                       {p.name}
                     </text>
                     {p.heads > 0 ? (
-                      <text x={point[0]} y={point[1] + fontSize * 1.2} textAnchor="middle" fontSize={fontSize * 0.85} fill="#231a14" stroke="#fffdf9" strokeWidth={fontSize / 5} paintOrder="stroke">
+                      <text x={label.x} y={label.y + label.size * 1.15} textAnchor="middle" fontSize={label.size * 0.85} fill="#231a14" stroke="#fffdf9" strokeWidth={label.size / 5} paintOrder="stroke">
                         {p.heads} cab.
                       </text>
                     ) : null}

@@ -26,16 +26,19 @@ const GEOMETRY: Record<Tag, string[]> = {
 };
 
 const GENERIC = /^(path|rect|polygon|polyline|circle|ellipse|g|group|layer|capa|svg|shape|forma|trazado|grupo|objeto|object|_x|layer_?\d+|capa_?\d+)[\s_-]*\d*$/i;
+const BACKGROUND = /^(perimetro|contorno|limite|borde|campo completo|predio|fondo|casco|camino|calle|ruta)\b/i;
 const SAFE_NUMBER_LIST = /^[\d\s.,eE+\-MmLlHhVvCcSsQqTtAaZz]*$/;
 const SAFE_TRANSFORM = /^[\d\s.,eE+\-()a-zA-Z]*$/;
 
 function cleanName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   // Illustrator codifica espacios y acentos: "Potrero_x5F_1" o "_x31_"
-  const decoded = raw
+  let decoded = raw
     .replace(/_x([0-9A-F]{2,4})_/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/_+/g, " ")
     .trim();
+  // Los id no admiten espacios y muchos programas los cambian por guiones: "Pista-Vieja-1" → "Pista Vieja 1".
+  if (!/\s/.test(decoded) && /[\p{L}\d]-[\p{L}\d]/u.test(decoded)) decoded = decoded.replace(/-+/g, " ");
   if (!decoded || decoded.length > 60 || GENERIC.test(decoded.replace(/\s+/g, "_"))) return null;
   return decoded;
 }
@@ -117,10 +120,18 @@ export function parseSvgMap(text: string): { ok: true; map: FarmMap; names: stri
   if (!shapes.length) return { ok: false, error: "El SVG no tiene formas dibujadas." };
   if (shapes.length > 3000) return { ok: false, error: "El mapa tiene demasiadas formas. Simplificalo." };
 
+  // El contorno del campo no es un potrero: queda de fondo.
+  for (const shape of shapes) {
+    if (shape.name && BACKGROUND.test(shape.name.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) {
+      shape.name = null;
+      shape.background = true;
+    }
+  }
+
   // Formas sin nombre: si adentro hay un único texto (ej. "Potrero 3" escrito en el mapa), ese es su nombre.
   let fromText = 0;
   for (const shape of shapes) {
-    if (shape.name) continue;
+    if (shape.name || shape.background) continue;
     const poly = outline(shape);
     if (!poly) continue;
     const inside = texts.filter((t) => t.chain === shape.transform && pointInPolygon(t.x, t.y, poly));

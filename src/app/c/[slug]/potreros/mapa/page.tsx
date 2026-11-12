@@ -5,7 +5,7 @@ import { getMap, listPaddocks } from "@/lib/paddocks";
 import { can } from "@/lib/roles";
 import { BackLink, PageTitle } from "@/components/ui";
 import { FarmMapView } from "@/components/farm-map";
-import { MapUpload } from "./upload";
+import { MapUpload, UnmappedList } from "./upload";
 import Link from "next/link";
 import { deleteMapAction } from "../actions";
 
@@ -16,6 +16,7 @@ export default async function MapPage({ params }: PageProps<"/c/[slug]/potreros/
   const { farm, role } = await getFarmAccess(slug);
   if (!can(role, "configurar")) notFound();
   const [map, paddocks] = await Promise.all([getMap(farm.id), listPaddocks(farm.id)]);
+  const unmapped = paddocks.filter((p) => !p.svgId);
   return (
     <div className="flex flex-col gap-5">
       <BackLink href={`/c/${slug}/potreros`} label="Volver" />
@@ -41,6 +42,7 @@ export default async function MapPage({ params }: PageProps<"/c/[slug]/potreros/
             </Link>
           )}
           <FarmMapView map={map} paddocks={paddocks} slug={slug} />
+          {unmapped.length ? <UnmappedList slug={slug} items={unmapped.map((p) => ({ name: p.name, heads: p.heads }))} /> : null}
           <form action={deleteMapAction}>
             <input type="hidden" name="slug" value={slug} />
             <button type="submit" className="h-11 w-full rounded-xl text-[15px] font-semibold text-bad-fg hover:bg-bad-bg">

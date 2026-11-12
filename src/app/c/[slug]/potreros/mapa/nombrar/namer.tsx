@@ -4,7 +4,7 @@ import { createElement, startTransition, useActionState, useEffect, useRef, useS
 import { useRouter } from "next/navigation";
 import { Button, Notice } from "@/components/ui";
 import type { FarmMap } from "@/lib/svg-map";
-import { centerOf } from "@/lib/svg-geometry";
+import { labelFor } from "@/lib/svg-geometry";
 import { nameShapeAction, type PaddockState } from "../../actions";
 
 /**
@@ -22,7 +22,7 @@ export function MapNamer({ slug, map, paddocks }: { slug: string; map: FarmMap; 
   const lastAt = useRef(0);
 
   const vb = map.viewBox.split(/[\s,]+/).map(Number);
-  const fontSize = Math.max(vb[2], vb[3]) / 28;
+  const fontSize = Math.max(vb[2], vb[3]) / 40;
   const named = shapes.filter((s) => s.name).length;
   const background = shapes.filter((s) => s.background).length;
   const pendingCount = shapes.length - named - background;
@@ -80,11 +80,11 @@ export function MapNamer({ slug, map, paddocks }: { slug: string; map: FarmMap; 
           })}
           {shapes.map((shape, i) => {
             if (!shape.name) return null;
-            const c = centerOf(shape);
-            if (!c) return null;
+            const l = labelFor(shape, shape.name, fontSize);
+            if (!l) return null;
             return (
               <g key={`t${i}`} transform={shape.transform || undefined} pointerEvents="none">
-                <text x={c[0]} y={c[1]} textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="#231a14" stroke="#fffdf9" strokeWidth={fontSize / 5} paintOrder="stroke">
+                <text x={l.x} y={l.y} textAnchor="middle" fontSize={l.size} fontWeight={600} fill="#231a14" stroke="#fffdf9" strokeWidth={l.size / 5} paintOrder="stroke">
                   {shape.name}
                 </text>
               </g>

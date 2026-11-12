@@ -143,7 +143,11 @@ export async function saveMap(farmId: string, svgText: string) {
     .where(eq(schema.paddocks.farmId, farmId));
   const byName = new Map(existing.map((p) => [p.name.toLowerCase(), p]));
   let created = 0;
+  const newNames = new Set(parsed.names.map((n) => n.toLowerCase()));
+  const orphans = existing.filter((p) => p.active && !newNames.has(p.name.toLowerCase())).map((p) => p.name);
   await db.transaction(async (tx) => {
+    // Los potreros que no están en el mapa nuevo dejan de estar enlazados (no se borran).
+    await tx.update(schema.paddocks).set({ svgId: null }).where(eq(schema.paddocks.farmId, farmId));
     await tx
       .insert(schema.farmMaps)
       .values({ farmId, svg: JSON.stringify(parsed.map) })
@@ -158,7 +162,14 @@ export async function saveMap(farmId: string, svgText: string) {
       }
     }
   });
-  return { ok: true as const, created, names: parsed.names, fromText: parsed.fromText, unnamed: parsed.map.shapes.filter((s) => !s.name).length };
+  return {
+    ok: true as const,
+    created,
+    names: parsed.names,
+    fromText: parsed.fromText,
+    unnamed: parsed.map.shapes.filter((s) => !s.name && !s.background).length,
+    orphans: orphans.length,
+  };
 }
 
 export async function getMap(farmId: string): Promise<FarmMap | null> {
@@ -282,4 +293,17 @@ export async function nameShape(farmId: string, index: number, input: { name: st
     }
   });
   return { ok: true as const };
+}
+
+/** Archiva los potreros que no están en el mapa y no tienen animales. Devuelve cuántos y cuáles quedaron por tener animales. */
+export async function archiveUnmapped(farmId: string) {
+  const list = (await listPaddocks(farmId)).filter((p) => !p.svgId);
+  const empty = list.filter((p) => p.heads === 0);
+  if (empty.length) {
+    await db
+      .update(schema.paddocks)
+      .set({ active: false, updatedAt: new Date() })
+      .where(and(eq(schema.paddocks.farmId, farmId), inArray(schema.paddocks.id, empty.map((p) => p.id))));
+  }
+  return { archived: empty.length, withAnimals: list.filter((p) => p.heads > 0).map((p) => p.name) };
 }
