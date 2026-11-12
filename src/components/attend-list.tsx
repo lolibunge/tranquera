@@ -2,15 +2,16 @@ import Link from "next/link";
 import { CATALOG, isSpeciesKey } from "@/lib/catalogo";
 import { formatDayMonth, relativeDays, todayISO } from "@/lib/dates";
 import { officialReminders, pendingAlerts } from "@/lib/health";
+import { formatQty, lowSupplies, unitFor } from "@/lib/stock";
 import { Card, StatusPill } from "./ui";
 
 /** "Para atender": campañas oficiales + controles vencidos o por vencer. */
 export async function AttendList({ slug, farmId, activeSpecies }: { slug: string; farmId: string; activeSpecies: string[] }) {
-  const [official, alerts] = await Promise.all([officialReminders(activeSpecies), pendingAlerts(farmId)]);
+  const [official, alerts, low] = await Promise.all([officialReminders(activeSpecies), pendingAlerts(farmId), lowSupplies(farmId)]);
   const today = todayISO();
   const visible = alerts.filter((a) => activeSpecies.includes(a.species));
 
-  if (!official.length && !visible.length) {
+  if (!official.length && !visible.length && !low.length) {
     return (
       <Card className="flex flex-col gap-2">
         <p className="text-base font-semibold">Todo al día</p>
@@ -59,6 +60,21 @@ export async function AttendList({ slug, farmId, activeSpecies }: { slug: string
           </li>
         );
       })}
+      {low.length ? (
+        <li>
+          <Link href={`/c/${slug}/stock?desde=inicio`} className="flex flex-col gap-2 rounded-2xl border border-line bg-surface p-4 hover:border-line-strong">
+            <StatusPill tone={low.some((s) => s.empty) ? "bad" : "warn"}>{low.length === 1 ? "Reponer 1 insumo" : `Reponer ${low.length} insumos`}</StatusPill>
+            <span className="text-base font-semibold">Stock bajo</span>
+            <span className="text-sm text-ink-2">
+              {low
+                .slice(0, 4)
+                .map((s) => `${s.name}: ${formatQty(s.stock)} ${unitFor(s.stock, s.unit)}`)
+                .join(" · ")}
+              {low.length > 4 ? ` y ${low.length - 4} más` : ""}
+            </span>
+          </Link>
+        </li>
+      ) : null}
     </ul>
   );
 }

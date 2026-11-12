@@ -7,9 +7,10 @@ import { ControlSelect } from "@/components/control-select";
 import { addDays } from "@/lib/dates";
 import { startSession, type SessionState } from "../actions";
 
-type Props = { slug: string; options: SpeciesKey[]; species: SpeciesKey; control: string; today: string };
+type Supply = { id: string; name: string; unit: string; stock: number };
+type Props = { slug: string; options: SpeciesKey[]; species: SpeciesKey; control: string; today: string; supplies?: Supply[] };
 
-export function NewSessionForm({ slug, options, species: initialSpecies, control: initialControl, today }: Props) {
+export function NewSessionForm({ slug, options, species: initialSpecies, control: initialControl, today, supplies = [] }: Props) {
   const [state, action, pending] = useActionState<SessionState, FormData>(startSession, {});
   const [species, setSpecies] = useState<SpeciesKey>(initialSpecies);
   const controls = CATALOG[species].controls;
@@ -91,6 +92,19 @@ export function NewSessionForm({ slug, options, species: initialSpecies, control
           hint={interval ? `Sugerida: cada ${interval} días.` : "Opcional."}
         />
       </div>
+      {supplies.length ? (
+        <div className="grid grid-cols-[1fr_7rem] gap-3">
+          <SelectField id="supplyId" name="supplyId" label="Descontar del stock" defaultValue="">
+            <option value="">No descontar</option>
+            {supplies.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} (hay {s.stock.toLocaleString("es-UY", { maximumFractionDigits: 2 })} {s.unit})
+              </option>
+            ))}
+          </SelectField>
+          <Field id="supplyQty" name="supplyQty" label="Cantidad" inputMode="decimal" placeholder="0" />
+        </div>
+      ) : null}
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Abriendo…" : "Empezar jornada"}

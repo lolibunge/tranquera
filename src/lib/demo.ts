@@ -135,6 +135,39 @@ async function realPaddocks(tx: Tx, farmId: string) {
   return Array.from({ length: 5 }, (_, i) => pool[Math.floor(i * step)].id);
 }
 
+const DEMO_SUPPLIES = [
+  { name: "Vacuna aftosa (prueba)", category: "medicamentos", unit: "dosis", minimum: 50, stock: 60, used: 20 },
+  { name: "Antiparasitario (prueba)", category: "medicamentos", unit: "ml", minimum: 100, stock: 450, used: 0 },
+  { name: "Ración 18% (prueba)", category: "alimento", unit: "bolsa", minimum: 5, stock: 12, used: 0 },
+  { name: "Fardos de alfalfa (prueba)", category: "alimento", unit: "fardo", minimum: 20, stock: 14, used: 0 },
+  { name: "Sal mineral (prueba)", category: "sales", unit: "kg", minimum: 25, stock: 25, used: 25 },
+  { name: "Gasoil (prueba)", category: "combustible", unit: "l", minimum: 100, stock: 380, used: 0 },
+];
+
+/** Insumos de prueba: uno bajo el mínimo, uno sin stock, el resto alcanza. Si ya están, no hace nada. */
+async function loadSupplies(tx: Tx, farmId: string, userId: string, today: string, sessionId?: string) {
+  for (const d of DEMO_SUPPLIES) {
+    const [row] = await tx
+      .insert(schema.supplies)
+      .values({ farmId, name: d.name, category: d.category, unit: d.unit, minimum: d.minimum })
+      .onConflictDoNothing()
+      .returning({ id: schema.supplies.id });
+    if (!row) continue;
+    await tx.insert(schema.supplyMoves).values({ farmId, supplyId: row.id, date: addDays(today, -40), quantity: d.stock, unitCost: "1.5", currency: "USD", note: "Compra de prueba", createdBy: userId });
+    if (d.used) {
+      await tx.insert(schema.supplyMoves).values({
+        farmId,
+        supplyId: row.id,
+        date: today,
+        quantity: -d.used,
+        note: sessionId && d.category === "medicamentos" ? null : "Consumo de prueba",
+        sessionId: sessionId && d.category === "medicamentos" ? sessionId : null,
+        createdBy: userId,
+      });
+    }
+  }
+}
+
 const EXTRA_SPECIES: { key: string; orientations: string[] }[] = [
   { key: "caballo", orientations: ["trabajo"] },
   { key: "caprino", orientations: ["leche"] },
@@ -266,6 +299,7 @@ export async function loadDemo(farmId: string, userId: string) {
       .from(schema.animals)
       .where(and(eq(schema.animals.farmId, farmId), isDemo(), inArray(schema.animals.species, ["vacuno", "ovino"])));
     if (existing.length) {
+      await loadSupplies(tx, farmId, userId, today);
       const added = await loadExtras(tx, farmId, userId, today);
       return { created: added, already: added === 0 };
     }
@@ -469,6 +503,7 @@ export async function loadDemo(farmId: string, userId: string) {
         createdBy: userId,
       })),
     );
+    await loadSupplies(tx, farmId, userId, today, session.id);
     const added = await loadExtras(tx, farmId, userId, today);
     return { created: rows.length + sheep.length + 1 + added, already: false };
   });
@@ -485,6 +520,7 @@ export async function clearDemo(farmId: string) {
       .delete(schema.healthSessions)
       .where(and(eq(schema.healthSessions.farmId, farmId), inArray(schema.healthSessions.product, [DEMO_PRODUCT, DEMO_SHEARING])));
     await tx.delete(schema.paddocks).where(and(eq(schema.paddocks.farmId, farmId), inArray(schema.paddocks.name, DEMO_PADDOCKS.map((p) => p.name))));
+    await tx.delete(schema.supplies).where(and(eq(schema.supplies.farmId, farmId), like(schema.supplies.name, "%(prueba)")));
     await tx.delete(schema.weatherLogs).where(and(eq(schema.weatherLogs.farmId, farmId), eq(schema.weatherLogs.note, "Dato de prueba")));
     await tx.delete(schema.farmMaps).where(and(eq(schema.farmMaps.farmId, farmId), like(schema.farmMaps.svg, `%"viewBox":"${DEMO_MAP_VIEWBOX}"%`)));
     return ids.length;

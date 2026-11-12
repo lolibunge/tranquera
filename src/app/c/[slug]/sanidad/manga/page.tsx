@@ -7,6 +7,7 @@ import { can } from "@/lib/roles";
 import { todayISO } from "@/lib/dates";
 import { BackLink, PageTitle } from "@/components/ui";
 import { NewSessionForm } from "./new-session-form";
+import { supplyOptions } from "@/lib/stock";
 
 export const metadata: Metadata = { title: "Nueva jornada de manga" };
 
@@ -23,7 +24,7 @@ export default async function NewSessionPage({ params, searchParams }: PageProps
     <div className="flex flex-col gap-5">
       <BackLink href={`/c/${slug}/sanidad`} label="Volver" />
       <PageTitle sub="Vacunas, tacto, inseminación, pesada, esquila… Elegí qué se hace y después pasás el bastón por cada animal.">Jornada de manga</PageTitle>
-      <NewSessionForm slug={slug} options={options} species={species} control={control} today={todayISO()} />
+      <NewSessionForm slug={slug} options={options} species={species} control={control} today={todayISO()} supplies={await supplyOptions(farm.id)} />
     </div>
   );
 }

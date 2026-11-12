@@ -20,6 +20,12 @@ export function categoryLabel(key: string) {
   return SUPPLY_CATEGORIES.find((c) => c.key === key)?.label ?? key;
 }
 
+const PLURAL: Record<string, string> = { bolsa: "bolsas", fardo: "fardos", unidad: "unidades" };
+/** "1 bolsa", "12 bolsas"; dosis, kg, l y ml no cambian. */
+export function unitFor(n: number, unit: string) {
+  return n === 1 ? unit : (PLURAL[unit] ?? unit);
+}
+
 /** Muestra cantidades sin decimales de más: 12, 12,5, 0,25. */
 export function formatQty(n: number) {
   return n.toLocaleString("es-UY", { maximumFractionDigits: 2 });
@@ -96,7 +102,7 @@ export async function archiveSupply(farmId: string, id: string) {
     .where(and(eq(schema.supplies.id, id), eq(schema.supplies.farmId, farmId)));
 }
 
-const balance = sql<number>`coalesce((select sum(m.cantidad) from insumos_movimientos m where m.insumo_id = ${schema.supplies.id}), 0)`.mapWith(Number);
+const balance = sql<number>`coalesce((select sum(m.cantidad) from insumos_movimientos m where m.insumo_id = "insumos"."id"), 0)`.mapWith(Number);
 
 export type SupplyRow = Awaited<ReturnType<typeof listSupplies>>[number];
 
