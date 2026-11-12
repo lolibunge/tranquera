@@ -310,7 +310,7 @@ export async function loadDemoData(_prev: ActionState, formData: FormData): Prom
   revalidatePath(`/c/${access.farm.slug}`, "layout");
   return result.already
     ? { error: "Los datos de prueba ya están cargados. Borralos primero si querés cargarlos de nuevo." }
-    : { ok: `Listo: ${result.created} animales de prueba (vacunos y ovinos), potreros, sanidad, lluvias y una jornada de manga abierta.`, at: Date.now() };
+    : { ok: `Listo: ${result.created} animales de prueba (vacunos, ovinos y un lote de corderos), potreros con mapa, sanidad, lluvias y dos jornadas abiertas (aftosa y esquila).`, at: Date.now() };
 }
 
 export async function clearDemoData(_prev: ActionState, formData: FormData): Promise<ActionState> {

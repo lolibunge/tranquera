@@ -20,6 +20,7 @@ const DEMO_PADDOCKS = [
 const PREFIX_RFID = "85800009";
 const DEMO_NAME = "La Pinta (prueba)";
 const DEMO_PRODUCT = "Aftosa Prueba";
+const DEMO_SHEARING = "Comparsa Prueba";
 
 type Demo = {
   tag?: string;
@@ -54,6 +55,7 @@ function isDemo() {
     like(schema.animals.tagVisual, `${PREFIX_SHEEP}%`),
     like(schema.animals.tagRfid, `${PREFIX_RFID}%`),
     eq(schema.animals.name, DEMO_NAME),
+    eq(schema.animals.name, LOT_NAME),
   );
 }
 
@@ -69,12 +71,13 @@ const DEMO_MAP = {
   ],
 };
 
-const SHEEP: { category: string; sex: string; n: number }[] = [
-  { category: "oveja", sex: "hembra", n: 12 },
-  { category: "borrega", sex: "hembra", n: 4 },
-  { category: "carnero", sex: "macho", n: 2 },
-  { category: "capon", sex: "castrado", n: 2 },
+const SHEEP: { category: string; sex: string; n: number; born: number; breed: string }[] = [
+  { category: "oveja", sex: "hembra", n: 12, born: 2021, breed: "Corriedale" },
+  { category: "borrega", sex: "hembra", n: 4, born: 2025, breed: "Corriedale" },
+  { category: "carnero", sex: "macho", n: 2, born: 2022, breed: "Merino Australiano" },
+  { category: "capon", sex: "castrado", n: 2, born: 2024, breed: "Corriedale" },
 ];
+const LOT_NAME = "Corderos 2026 (prueba)";
 
 export async function loadDemo(farmId: string, userId: string) {
   const today = todayISO();
@@ -140,14 +143,93 @@ export async function loadDemo(farmId: string, userId: string) {
               category: g.category,
               sex: g.sex,
               tagVisual: `${PREFIX_SHEEP}${String(n).padStart(4, "0")}`,
-              breed: "Corriedale",
-              origin: "nacido" as const,
+              breed: g.breed,
+              birthDate: `${g.born}-0${(n % 3) + 7}-1${n % 9}`,
+              origin: g.category === "carnero" ? ("comprado" as const) : ("nacido" as const),
+              originDetail: g.category === "carnero" ? "Cabaña Prueba" : null,
+              arrivedOn: g.category === "carnero" ? "2024-02-20" : null,
               createdBy: userId,
             };
           }),
         ),
       )
+      .returning({ id: schema.animals.id, tag: schema.animals.tagVisual, category: schema.animals.category });
+
+    // Lote de corderos de la señalada (se cargan por lote, con cantidad).
+    const [lot] = await tx
+      .insert(schema.animals)
+      .values({ farmId, species: "ovino", isLot: true, headCount: 15, name: LOT_NAME, category: "cordero", breed: "Corriedale", birthDate: addDays(today, -60), origin: "nacido", createdBy: userId })
       .returning({ id: schema.animals.id });
+
+    // Historia de la majada (fechas relativas a hoy).
+    const ewes = sheep.filter((x) => x.category === "oveja");
+    const sheepEvent = (animalId: string, control: string, label: string, daysAgo: number, extra: Partial<typeof schema.healthEvents.$inferInsert> = {}) => ({
+      farmId,
+      animalId,
+      control,
+      label,
+      date: addDays(today, -daysAgo),
+      createdBy: userId,
+      ...extra,
+    });
+    await tx.insert(schema.healthEvents).values([
+      // Esquila del año pasado en todas: la próxima vence en 5 días ("vence pronto").
+      ...sheep.map((x, i) =>
+        sheepEvent(x.id, "esquila", "Esquila", 360, {
+          product: "Comparsa Prueba",
+          batch: "Esquila Tally-Hi",
+          result: x.category === "carnero" ? "6.8" : x.category === "capon" ? "4.9" : String(3.6 + (i % 5) * 0.2),
+          nextDueDate: addDays(today, 5),
+        }),
+      ),
+      // Baño de sarna/piojo del año pasado: vencido.
+      ...sheep.map((x) => sheepEvent(x.id, "bano_sarna", "Baño sarna o piojo", 380, { product: "Baño Prueba", nextDueDate: addDays(today, -15) })),
+      // Vacuna clostridial: al día.
+      ...sheep.map((x) => sheepEvent(x.id, "vacuna_clostridial", "Vacuna clostridial", 120, { product: "Clostridial Prueba", dose: "2 ml", nextDueDate: addDays(today, 245) })),
+      // Ecografía de las ovejas.
+      ...ewes.map((x, i) =>
+        sheepEvent(x.id, "ecografia", "Ecografía", 75, { vet: "Dr. Prueba", result: i % 4 === 0 ? "mellizos" : i % 5 === 0 ? "vacía" : "preñada" }),
+      ),
+      // Pesada de capones y borregas.
+      ...sheep
+        .filter((x) => x.category === "capon" || x.category === "borrega")
+        .map((x, i) => sheepEvent(x.id, "pesada", "Pesada", 20, { result: String(38 + i * 3) })),
+      // Señalada y dosificación del lote de corderos.
+      sheepEvent(lot.id, "senalada", "Señalada", 30, { notes: "15 corderos señalados" }),
+      sheepEvent(lot.id, "desparasitacion", "Desparasitación", 30, { product: "Antiparasitario Prueba", nextDueDate: addDays(today, 60) }),
+    ]);
+
+    // Esquila de este año empezada: 3 ovejas ya esquiladas.
+    const [shearing] = await tx
+      .insert(schema.healthSessions)
+      .values({
+        farmId,
+        species: "ovino",
+        control: "esquila",
+        label: "Esquila",
+        product: DEMO_SHEARING,
+        batch: "Esquila Tally-Hi",
+        vet: "Capataz de comparsa",
+        date: today,
+        nextDueDate: addDays(today, 365),
+        createdBy: userId,
+      })
+      .returning({ id: schema.healthSessions.id });
+    await tx.insert(schema.healthEvents).values(
+      ewes.slice(0, 3).map((x, i) => ({
+        farmId,
+        animalId: x.id,
+        sessionId: shearing.id,
+        control: "esquila",
+        label: "Esquila",
+        product: DEMO_SHEARING,
+        batch: "Esquila Tally-Hi",
+        date: today,
+        nextDueDate: addDays(today, 365),
+        result: String(3.9 + i * 0.3),
+        createdBy: userId,
+      })),
+    );
 
     // Vacas y toro en el Potrero 1, terneros en el 2, ovinos en el Bajo; el Verdeo descansa.
     const place = async (ids: string[], paddockId: string, daysAgo: number) => {
@@ -160,7 +242,7 @@ export async function loadDemo(farmId: string, userId: string) {
     const calves = rows.filter((r) => !adults.includes(r.id)).map((r) => r.id);
     await place(adults, paddockIds[0], 12);
     await place(calves, paddockIds[1], 5);
-    await place(sheep.map((s) => s.id), paddockIds[2], 20);
+    await place([...sheep.map((s) => s.id), lot.id], paddockIds[2], 20);
     // El verdeo tuvo animales y está en descanso hace 9 días.
     const rest = crypto.randomUUID();
     await tx.insert(schema.movements).values([
@@ -211,7 +293,7 @@ export async function loadDemo(farmId: string, userId: string) {
         createdBy: userId,
       })),
     );
-    return { created: rows.length + sheep.length, already: false };
+    return { created: rows.length + sheep.length + 1, already: false };
   });
 }
 
@@ -222,7 +304,9 @@ export async function clearDemo(farmId: string) {
     const saleIds = [...new Set(demo.map((r) => r.saleId).filter(Boolean) as string[])];
     if (saleIds.length) await tx.delete(schema.sales).where(and(eq(schema.sales.farmId, farmId), inArray(schema.sales.id, saleIds)));
     if (ids.length) await tx.delete(schema.animals).where(inArray(schema.animals.id, ids)); // la sanidad se borra en cascada
-    await tx.delete(schema.healthSessions).where(and(eq(schema.healthSessions.farmId, farmId), eq(schema.healthSessions.product, DEMO_PRODUCT)));
+    await tx
+      .delete(schema.healthSessions)
+      .where(and(eq(schema.healthSessions.farmId, farmId), inArray(schema.healthSessions.product, [DEMO_PRODUCT, DEMO_SHEARING])));
     await tx.delete(schema.paddocks).where(and(eq(schema.paddocks.farmId, farmId), inArray(schema.paddocks.name, DEMO_PADDOCKS.map((p) => p.name))));
     await tx.delete(schema.weatherLogs).where(and(eq(schema.weatherLogs.farmId, farmId), eq(schema.weatherLogs.note, "Dato de prueba")));
     await tx.delete(schema.farmMaps).where(and(eq(schema.farmMaps.farmId, farmId), like(schema.farmMaps.svg, `%"viewBox":"${DEMO_MAP_VIEWBOX}"%`)));
