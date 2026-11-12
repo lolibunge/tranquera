@@ -1,8 +1,11 @@
+"use client";
+
 import Link from "next/link";
 import { createElement } from "react";
 import type { FarmMap } from "@/lib/svg-map";
 import { labelFor } from "@/lib/svg-geometry";
 import type { PaddockSummary } from "@/lib/paddocks";
+import { PanZoomSvg } from "./pan-zoom-svg";
 
 /**
  * Mapa del campo armado solo con la geometría guardada (nunca el SVG original).
@@ -12,12 +15,13 @@ export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: P
   const byName = new Map(paddocks.map((p) => [p.svgId?.toLowerCase() ?? p.name.toLowerCase(), p]));
   const vb = map.viewBox.split(/[\s,]+/).map(Number);
   const fontSize = Math.max(vb[2], vb[3]) / 45;
-  const labeled = new Set<string>();
   return (
     <figure className="flex flex-col gap-2">
       <div className="overflow-hidden rounded-2xl border border-line bg-surface p-2">
-        <svg viewBox={map.viewBox} role="img" aria-label="Mapa de potreros" className="h-auto max-h-[60vh] w-full">
-          {map.shapes.map((shape, i) => {
+        <PanZoomSvg key={map.viewBox} viewBox={map.viewBox} label="Mapa de potreros" className="max-h-[60vh]">
+          {(zoom) => {
+          const labeled = new Set<string>();
+          return map.shapes.map((shape, i) => {
             const p = shape.name && !shape.background ? byName.get(shape.name.toLowerCase()) : undefined;
             const fill = !p ? "var(--chip)" : p.heads > 0 ? "var(--brand)" : p.restDays !== null ? "#2e7d3e" : "#d6ccbf";
             const opacity = !p ? 0.5 : p.heads > 0 ? 0.6 : p.restDays !== null ? 0.28 : 0.5;
@@ -33,7 +37,7 @@ export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: P
             if (!p) return <g key={i}>{el}</g>;
             const status = p.heads > 0 ? `${p.heads} cabezas` : p.restDays !== null ? `descansa hace ${p.restDays} días` : "vacío";
             // Un nombre por potrero (aunque tenga varias formas).
-            const label = labeled.has(p.id) ? null : labelFor(shape, p.name, fontSize);
+            const label = labeled.has(p.id) ? null : labelFor(shape, p.name, fontSize / zoom);
             if (label) labeled.add(p.id);
             return (
               <Link key={i} href={`/c/${slug}/potreros/${p.id}`} aria-label={`${p.name}: ${status}`}>
@@ -53,8 +57,9 @@ export function FarmMapView({ map, paddocks, slug }: { map: FarmMap; paddocks: P
                 ) : null}
               </Link>
             );
-          })}
-        </svg>
+          });
+          }}
+        </PanZoomSvg>
       </div>
       <figcaption className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         <span className="flex items-center gap-1.5">

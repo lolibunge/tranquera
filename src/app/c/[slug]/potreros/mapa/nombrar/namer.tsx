@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Notice } from "@/components/ui";
 import type { FarmMap } from "@/lib/svg-map";
 import { labelFor } from "@/lib/svg-geometry";
+import { PanZoomSvg } from "@/components/pan-zoom-svg";
 import { nameShapeAction, type PaddockState } from "../../actions";
 
 /**
@@ -59,7 +60,9 @@ export function MapNamer({ slug, map, paddocks }: { slug: string; map: FarmMap; 
         {named} con nombre · {background} de fondo · {pendingCount} sin nombre
       </p>
       <div className="overflow-hidden rounded-2xl border border-line bg-surface p-2">
-        <svg viewBox={map.viewBox} className="h-auto max-h-[55vh] w-full touch-manipulation" role="group" aria-label="Mapa para nombrar">
+        <PanZoomSvg key={map.viewBox} viewBox={map.viewBox} label="Mapa para nombrar" className="max-h-[55vh]">
+          {(zoom) => (
+            <>
           {shapes.map((shape, i) => {
             const isSel = i === selected;
             const fill = isSel ? "var(--accent)" : shape.background ? "#d6ccbf" : shape.name ? "var(--brand)" : "#fdf0d5";
@@ -80,7 +83,7 @@ export function MapNamer({ slug, map, paddocks }: { slug: string; map: FarmMap; 
           })}
           {shapes.map((shape, i) => {
             if (!shape.name) return null;
-            const l = labelFor(shape, shape.name, fontSize);
+            const l = labelFor(shape, shape.name, fontSize / zoom);
             if (!l) return null;
             return (
               <g key={`t${i}`} transform={shape.transform || undefined} pointerEvents="none">
@@ -90,7 +93,9 @@ export function MapNamer({ slug, map, paddocks }: { slug: string; map: FarmMap; 
               </g>
             );
           })}
-        </svg>
+            </>
+          )}
+        </PanZoomSvg>
       </div>
       <p className="text-xs text-muted">Amarillo: sin nombre · marrón: potrero · gris: fondo. Tocá una división para cambiarla.</p>
 
