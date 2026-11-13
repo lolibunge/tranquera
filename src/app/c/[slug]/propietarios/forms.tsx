@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { Button, Field, Notice, SelectField } from "@/components/ui";
 import { AnimalPicker, type PickAnimal } from "@/components/animal-picker";
-import { addEntryAction, addRateAction, assignAnimalsAction, chargeMonthAction, createExpenseAction, saveOwnerAction, saveSharesAction, type OwnerState } from "./actions";
+import { addEntryAction, addRateAction, assignAnimalsAction, chargeMonthAction, saveOwnerAction, saveSharesAction, type OwnerState } from "./actions";
 
 type Kind = { value: string; label: string; help: string };
 type Owner = { id: string; name: string; kind: string; phone: string | null; monthlyFee: string | null; currency: string; notes: string | null };
@@ -117,68 +117,6 @@ export function AssignForm({
       {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Guardando…" : `Guardar (${heads} cab.)`}
-      </Button>
-    </form>
-  );
-}
-
-export function ExpenseForm({
-  slug,
-  today,
-  categories,
-  owners,
-}: {
-  slug: string;
-  today: string;
-  categories: readonly { key: string; label: string }[];
-  owners: { id: string; name: string; kind?: string }[];
-}) {
-  const [state, action, pending] = useActionState<OwnerState, FormData>(createExpenseAction, {});
-  const [owner, setOwner] = useState("");
-  return (
-    <form action={action} className="flex flex-col gap-4" key={state.at}>
-      <input type="hidden" name="slug" value={slug} />
-      <Field id="concept" name="concept" label="Concepto" placeholder="Ej.: Sueldo octubre, Flete a remate" required />
-      <div className="grid grid-cols-2 gap-3">
-        <Field id="date" name="date" type="date" label="Fecha" max={today} defaultValue={today} required />
-        <SelectField id="category" name="category" label="Categoría" defaultValue="otros">
-          {categories.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.label}
-            </option>
-          ))}
-        </SelectField>
-      </div>
-      <div className="grid grid-cols-[1fr_6.5rem] gap-3">
-        <Field id="amount" name="amount" label="Monto" inputMode="decimal" required />
-        <SelectField id="currency" name="currency" label="Moneda" defaultValue="USD">
-          <option value="USD">US$</option>
-          <option value="UYU">$</option>
-        </SelectField>
-      </div>
-      {owners.length ? (
-        <>
-          <SelectField id="ownerId" name="ownerId" label="Se imputa a" value={owner} onChange={(e) => setOwner(e.target.value)}>
-            <option value="">Gasto general del campo</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </SelectField>
-          {owner ? (
-            <label className="flex items-start gap-3 text-[15px]">
-              <input type="checkbox" name="bill" defaultChecked={owners.find((o) => o.id === owner)?.kind === "tercero"} key={owner} className="mt-1 size-5 accent-brand" />
-              Cobrárselo: suma a la cuenta de {owners.find((o) => o.id === owner)?.name}
-            </label>
-          ) : null}
-        </>
-      ) : null}
-      <Field id="supplier" name="supplier" label="Proveedor" placeholder="Opcional" />
-      {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
-      {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Guardando…" : "Registrar gasto"}
       </Button>
     </form>
   );

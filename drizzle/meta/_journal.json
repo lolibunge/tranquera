@@ -78,6 +78,13 @@
       "when": 1794520511550,
       "tag": "0010_racion_especie",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794581147810,
+      "tag": "0011_perfil_gastos",
+      "breakpoints": true
     }
   ]
 }

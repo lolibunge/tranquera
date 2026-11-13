@@ -15,17 +15,18 @@ export type OwnerKind = (typeof OWNER_KINDS)[number]["value"];
 export const ownerKindLabel = (k: string) => OWNER_KINDS.find((o) => o.value === k)?.label ?? k;
 
 export const EXPENSE_CATEGORIES = [
-  { key: "sanidad", label: "Sanidad y veterinario" },
-  { key: "alimentacion", label: "Ración, fardos y pasturas" },
-  { key: "personal", label: "Sueldos y jornales" },
-  { key: "combustible", label: "Combustible" },
-  { key: "mantenimiento", label: "Alambrados, aguadas y mantenimiento" },
-  { key: "fletes", label: "Fletes y guías" },
-  { key: "impuestos", label: "BPS, contribución e impuestos" },
-  { key: "arrendamiento", label: "Arrendamiento" },
-  { key: "compra_animales", label: "Compra de animales" },
-  { key: "otros", label: "Otros" },
+  { key: "personal", label: "Sueldos y jornales", short: "Sueldos", color: "#7a4a2a" },
+  { key: "alimentacion", label: "Ración, fardos y pasturas", short: "Ración", color: "#c9733d" },
+  { key: "sanidad", label: "Sanidad, veterinario y herrero", short: "Sanidad", color: "#3d5a96" },
+  { key: "combustible", label: "Combustible", short: "Combustible", color: "#5b6b3a" },
+  { key: "mantenimiento", label: "Alambrados, aguadas y arreglos", short: "Arreglos", color: "#8a6d3b" },
+  { key: "impuestos", label: "BPS, contribución e impuestos", short: "Impuestos", color: "#6b5d52" },
+  { key: "fletes", label: "Fletes y guías", short: "Fletes", color: "#2f6b6b" },
+  { key: "compra_animales", label: "Compra de animales", short: "Compras", color: "#9b4d6b" },
+  { key: "arrendamiento", label: "Arrendamiento", short: "Arriendo", color: "#4f5d75" },
+  { key: "otros", label: "Otros", short: "Otros", color: "#a89a8c" },
 ] as const;
+export const expenseColor = (k: string) => EXPENSE_CATEGORIES.find((c) => c.key === k)?.color ?? "#a89a8c";
 export const expenseCategoryLabel = (k: string) => EXPENSE_CATEGORIES.find((c) => c.key === k)?.label ?? k;
 
 export type Money = Partial<Record<"USD" | "UYU", number>>;
@@ -171,65 +172,180 @@ export async function assignAnimals(farmId: string, ownerId: string, animalIds: 
 export const expenseInput = z.object({
   date: z.string().refine(isISODate, "Revisá la fecha."),
   concept: z.string().trim().min(2, "Escribí el concepto.").max(120),
-  category: z.enum(EXPENSE_CATEGORIES.map((c) => c.key) as [string, ...string[]]),
+  category: z.enum(EXPENSE_CATEGORIES.map((c) => c.key) as [string, ...string[]], { message: "Elegí en qué se gastó." }),
   amount: z
     .string()
     .trim()
     .refine((v) => (parseAmount(v) ?? 0) > 0 && (parseAmount(v) ?? 0) < 1e10, "Revisá el monto.")
     .transform((v) => parseAmount(v) as number),
   currency: z.enum(["USD", "UYU"]),
-  ownerId: z.string().uuid().nullable(),
   supplier: z.string().trim().max(80).optional(),
   notes: z.string().trim().max(500).optional(),
-  /** Además de imputarlo, cargarlo en la cuenta del propietario para cobrárselo. */
+  /** Quién lo pagó de su bolsillo. Vacío: la caja del campo. */
+  paidBy: z.string().trim().max(60).optional().nullable(),
+  /** Para quién es: el campo, un dueño, o repartido entre animales. */
+  forWhom: z.enum(["campo", "dueno", "reparto"]).default("campo"),
+  ownerId: z.string().uuid().nullable().optional(),
+  animalIds: z.array(z.string().uuid()).optional(),
+  /** Cargar en la cuenta del dueño (o de cada dueño, si se reparte) para cobrárselo. */
   bill: z.boolean().optional(),
 });
+
+/** Partes de un reparto: por cabezas de cada dueño entre los animales elegidos (lo sin dueño es del campo). */
+export async function splitPreview(farmId: string, animalIds: string[]) {
+  if (!animalIds.length) return [];
+  const rows = await db
+    .select({ id: schema.animals.id, heads: schema.animals.headCount, ownerId: schema.animals.ownerId, owner: schema.owners.name, kind: schema.owners.kind })
+    .from(schema.animals)
+    .leftJoin(schema.owners, eq(schema.owners.id, schema.animals.ownerId))
+    .where(and(eq(schema.animals.farmId, farmId), inArray(schema.animals.id, animalIds), eq(schema.animals.status, "activo")));
+  const map = new Map<string, { ownerId: string | null; name: string; kind: string; heads: number }>();
+  for (const r of rows) {
+    const key = r.ownerId && r.kind !== "campo" ? r.ownerId : "campo";
+    const g = map.get(key) ?? { ownerId: key === "campo" ? null : r.ownerId, name: key === "campo" ? "El campo" : (r.owner ?? "Sin nombre"), kind: key === "campo" ? "campo" : (r.kind ?? "tercero"), heads: 0 };
+    g.heads += r.heads;
+    map.set(key, g);
+  }
+  return [...map.values()].sort((a, b) => Number(a.ownerId !== null) - Number(b.ownerId !== null) || a.name.localeCompare(b.name, "es"));
+}
 
 export async function createExpense(farmId: string, userId: string, raw: z.input<typeof expenseInput>) {
   const parsed = expenseInput.safeParse(raw);
   if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0].message };
   const d = parsed.data;
   if (d.date > todayISO()) return { ok: false as const, error: "La fecha no puede ser futura." };
-  if (d.ownerId && !(await getOwner(farmId, d.ownerId))) return { ok: false as const, error: "Elegí un propietario de la lista." };
+  const base = {
+    farmId,
+    date: d.date,
+    category: d.category,
+    currency: d.currency,
+    supplier: d.supplier || null,
+    notes: d.notes || null,
+    paidBy: d.paidBy || null,
+    createdBy: userId,
+  };
+
+  // Las partes: una sola (campo o dueño) o una por dueño si se reparte entre animales.
+  let parts: { ownerId: string | null; kind: string; amount: number; concept: string }[];
+  let splitId: string | null = null;
+  if (d.forWhom === "reparto") {
+    const groups = await splitPreview(farmId, d.animalIds ?? []);
+    if (!groups.length) return { ok: false as const, error: "Elegí los animales entre los que se reparte." };
+    const total = groups.reduce((n, g) => n + g.heads, 0);
+    let left = Math.round(d.amount * 100);
+    parts = groups.map((g, i) => {
+      const cents = i === groups.length - 1 ? left : Math.round((d.amount * 100 * g.heads) / total);
+      left -= cents;
+      return { ownerId: g.ownerId, kind: g.kind, amount: cents / 100, concept: `${d.concept} (${g.heads} de ${total} animales)` };
+    });
+    splitId = crypto.randomUUID();
+  } else if (d.forWhom === "dueno") {
+    if (!d.ownerId) return { ok: false as const, error: "Elegí el dueño." };
+    const owner = await getOwner(farmId, d.ownerId);
+    if (!owner) return { ok: false as const, error: "Elegí un dueño de la lista." };
+    parts = [{ ownerId: owner.id, kind: owner.kind, amount: d.amount, concept: d.concept }];
+  } else {
+    parts = [{ ownerId: null, kind: "campo", amount: d.amount, concept: d.concept }];
+  }
+
   await db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(schema.expenses)
-      .values({
-        farmId,
-        date: d.date,
-        concept: d.concept,
-        category: d.category,
-        amount: d.amount.toFixed(2),
-        currency: d.currency,
-        ownerId: d.ownerId,
-        supplier: d.supplier || null,
-        notes: d.notes || null,
-        createdBy: userId,
-      })
-      .returning({ id: schema.expenses.id });
-    if (d.bill && d.ownerId) {
-      await tx.insert(schema.ledger).values({
-        farmId,
-        ownerId: d.ownerId,
-        kind: "cargo",
-        date: d.date,
-        amount: d.amount.toFixed(2),
-        currency: d.currency,
-        concept: d.concept,
-        expenseId: row.id,
-        createdBy: userId,
-      });
+    for (const part of parts) {
+      const [row] = await tx
+        .insert(schema.expenses)
+        .values({ ...base, concept: part.concept.slice(0, 120), amount: part.amount.toFixed(2), ownerId: part.ownerId, splitId })
+        .returning({ id: schema.expenses.id });
+      if (d.bill && part.ownerId && part.kind !== "campo" && part.amount > 0) {
+        await tx.insert(schema.ledger).values({
+          farmId,
+          ownerId: part.ownerId,
+          kind: "cargo",
+          date: d.date,
+          amount: part.amount.toFixed(2),
+          currency: d.currency,
+          concept: part.concept.slice(0, 120),
+          expenseId: row.id,
+          createdBy: userId,
+        });
+      }
     }
   });
-  return { ok: true as const };
+  return { ok: true as const, value: { parts: parts.length } };
 }
 
 export async function deleteExpense(farmId: string, id: string) {
   if (!z.string().uuid().safeParse(id).success) return;
+  const [row] = await db
+    .select({ splitId: schema.expenses.splitId })
+    .from(schema.expenses)
+    .where(and(eq(schema.expenses.id, id), eq(schema.expenses.farmId, farmId)))
+    .limit(1);
+  if (!row) return;
+  // Un gasto repartido se borra entero, con lo que se había cargado a cada dueño.
+  const ids = row.splitId
+    ? (await db.select({ id: schema.expenses.id }).from(schema.expenses).where(and(eq(schema.expenses.farmId, farmId), eq(schema.expenses.splitId, row.splitId)))).map((r) => r.id)
+    : [id];
   await db.transaction(async (tx) => {
-    await tx.delete(schema.ledger).where(and(eq(schema.ledger.farmId, farmId), eq(schema.ledger.expenseId, id)));
-    await tx.delete(schema.expenses).where(and(eq(schema.expenses.id, id), eq(schema.expenses.farmId, farmId)));
+    await tx.delete(schema.ledger).where(and(eq(schema.ledger.farmId, farmId), inArray(schema.ledger.expenseId, ids)));
+    await tx.delete(schema.expenses).where(and(eq(schema.expenses.farmId, farmId), inArray(schema.expenses.id, ids)));
   });
+}
+
+/** Lo que cada persona puso de su bolsillo y todavía no se le devolvió. */
+export async function pendingReimbursements(farmId: string) {
+  const rows = await db
+    .select({
+      person: schema.expenses.paidBy,
+      currency: schema.expenses.currency,
+      total: sql<number>`sum(${schema.expenses.amount})::float`,
+      count: sql<number>`count(distinct coalesce(${schema.expenses.splitId}, ${schema.expenses.id}))::int`,
+    })
+    .from(schema.expenses)
+    .where(and(eq(schema.expenses.farmId, farmId), sql`${schema.expenses.paidBy} is not null`, isNull(schema.expenses.reimbursedAt)))
+    .groupBy(schema.expenses.paidBy, schema.expenses.currency);
+  const map = new Map<string, { person: string; total: Money; count: number }>();
+  for (const r of rows) {
+    const p = map.get(r.person!) ?? { person: r.person!, total: {}, count: 0 };
+    addMoney(p.total, r.currency, r.total);
+    p.count += r.count;
+    map.set(r.person!, p);
+  }
+  return [...map.values()];
+}
+
+export async function markReimbursed(farmId: string, person: string) {
+  await db
+    .update(schema.expenses)
+    .set({ reimbursedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(schema.expenses.farmId, farmId), eq(schema.expenses.paidBy, person), isNull(schema.expenses.reimbursedAt)));
+}
+
+/** Personas para "¿Quién lo pagó?": el equipo del campo y quienes ya pagaron antes. */
+export async function payers(farmId: string) {
+  const [team, used] = await Promise.all([
+    db
+      .select({ name: schema.users.name })
+      .from(schema.memberships)
+      .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
+      .where(eq(schema.memberships.farmId, farmId)),
+    db
+      .selectDistinct({ name: schema.expenses.paidBy })
+      .from(schema.expenses)
+      .where(and(eq(schema.expenses.farmId, farmId), sql`${schema.expenses.paidBy} is not null`)),
+  ]);
+  const first = (n: string) => n.trim().split(/\s+/)[0];
+  return [...new Set([...team.map((t) => first(t.name)), ...used.map((u) => u.name!)])].filter(Boolean).slice(0, 8);
+}
+
+/** Totales por moneda de un rango de fechas. */
+export async function expenseTotals(farmId: string, from: string, to: string) {
+  const rows = await db
+    .select({ currency: schema.expenses.currency, total: sql<number>`sum(${schema.expenses.amount})::float` })
+    .from(schema.expenses)
+    .where(and(eq(schema.expenses.farmId, farmId), gte(schema.expenses.date, from), lte(schema.expenses.date, to)))
+    .groupBy(schema.expenses.currency);
+  const m: Money = {};
+  for (const r of rows) addMoney(m, r.currency, r.total);
+  return m;
 }
 
 export async function listExpenses(farmId: string, from: string, to: string) {
@@ -242,7 +358,11 @@ export async function listExpenses(farmId: string, from: string, to: string) {
       amount: schema.expenses.amount,
       currency: schema.expenses.currency,
       supplier: schema.expenses.supplier,
+      paidBy: schema.expenses.paidBy,
+      reimbursedAt: schema.expenses.reimbursedAt,
+      splitId: schema.expenses.splitId,
       ownerName: schema.owners.name,
+      billed: sql<boolean>`exists (select 1 from cuenta_movimientos c where c.gasto_id = ${schema.expenses.id})`,
     })
     .from(schema.expenses)
     .leftJoin(schema.owners, eq(schema.owners.id, schema.expenses.ownerId))

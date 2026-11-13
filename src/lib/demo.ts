@@ -187,6 +187,7 @@ async function loadOwners(tx: Tx, farmId: string, userId: string, today: string)
   const boarder = await make("Pensión Rodríguez (prueba)", "tercero", { monthlyFee: "300.00" });
   const pool = await make("Pozo terneros (prueba)", "pozo");
   if (!partner || !boarder || !pool || !farmOwner) return; // ya estaban
+  await tx.update(schema.farms).set({ hasBoarders: true, hasPartners: true }).where(eq(schema.farms.id, farmId));
 
   await tx.insert(schema.ownerShares).values([
     { poolId: pool, partnerId: farmOwner, percent: 60 },
@@ -246,7 +247,7 @@ async function loadOwners(tx: Tx, farmId: string, userId: string, today: string)
 
   await tx.insert(schema.expenses).values([
     { farmId, date: addDays(today, -10), concept: "Sueldo peón (prueba)", category: "personal", amount: "850.00", currency: "USD", createdBy: userId },
-    { farmId, date: addDays(today, -8), concept: "Gasoil (prueba)", category: "combustible", amount: "9800.00", currency: "UYU", supplier: "Estación Prueba", createdBy: userId },
+    { farmId, date: addDays(today, -8), concept: "Gasoil (prueba)", category: "combustible", amount: "9800.00", currency: "UYU", supplier: "Estación Prueba", paidBy: "Loli", createdBy: userId },
     { farmId, date: addDays(today, -5), concept: "Ración terneros (prueba)", category: "alimentacion", amount: "420.00", currency: "USD", ownerId: pool, createdBy: userId },
     { farmId, date: addDays(today, -3), concept: "Veterinario cabras (prueba)", category: "sanidad", amount: "120.00", currency: "USD", ownerId: partner, createdBy: userId },
   ]);

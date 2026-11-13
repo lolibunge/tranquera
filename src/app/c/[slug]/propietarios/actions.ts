@@ -6,6 +6,9 @@ import { getFarmAccess } from "@/lib/farms";
 import { can } from "@/lib/roles";
 import { parseAmount } from "@/lib/number";
 import { addEntry, addRate, chargeMonth, deleteEntry, endRate } from "@/lib/ledger";
+import { db, schema } from "@/db";
+import { eq } from "drizzle-orm";
+import { markReimbursed } from "@/lib/owners";
 import { archiveOwner, assignAnimals, createExpense, deleteExpense, saveOwner, savePoolShares } from "@/lib/owners";
 
 export type OwnerState = { error?: string; ok?: string; at?: number };
@@ -67,20 +70,44 @@ export async function archiveOwnerAction(f: FormData) {
 export async function createExpenseAction(_prev: OwnerState, f: FormData): Promise<OwnerState> {
   const a = await access(f);
   if (!a) return { error: "No tenés permiso para cargar gastos." };
+  const paidBy = t(f, "paidBy") === "__otra" ? t(f, "paidByOther") : t(f, "paidBy");
+  if (t(f, "paidBy") === "__otra" && !paidBy.trim()) return { error: "Escribí quién lo pagó." };
+  const forWhom = t(f, "forWhom") === "dueno" ? "dueno" : t(f, "forWhom") === "reparto" ? "reparto" : "campo";
   const result = await createExpense(a.farm.id, a.user.id, {
     date: t(f, "date"),
     concept: t(f, "concept"),
     category: t(f, "category"),
     amount: t(f, "amount"),
-    currency: t(f, "currency") === "UYU" ? "UYU" : "USD",
-    ownerId: t(f, "ownerId") || null,
+    currency: t(f, "currency") === "USD" ? "USD" : "UYU",
     supplier: t(f, "supplier"),
     notes: t(f, "notes"),
+    paidBy: paidBy || null,
+    forWhom,
+    ownerId: t(f, "ownerId") || null,
+    animalIds: f.getAll("animal").map(String),
     bill: f.get("bill") === "on",
   });
   if (!result.ok) return { error: result.error };
   revalidatePath(`/c/${a.farm.slug}`, "layout");
-  return { ok: "Gasto registrado.", at: Date.now() };
+  redirect(`/c/${a.farm.slug}/gastos?mes=${t(f, "date").slice(0, 7)}&moneda=${t(f, "currency") === "USD" ? "USD" : "UYU"}`);
+}
+
+export async function markReimbursedAction(f: FormData) {
+  const a = await access(f);
+  if (!a) return;
+  await markReimbursed(a.farm.id, t(f, "person"));
+  revalidatePath(`/c/${a.farm.slug}`, "layout");
+}
+
+export async function saveProfileAction(_prev: OwnerState, f: FormData): Promise<OwnerState> {
+  const a = await getFarmAccess(t(f, "slug"));
+  if (!can(a.role, "configurar")) return { error: "No tenés permiso para cambiar esto." };
+  await db
+    .update(schema.farms)
+    .set({ hasBoarders: f.get("hasBoarders") === "si", hasPartners: f.get("hasPartners") === "si", updatedAt: new Date() })
+    .where(eq(schema.farms.id, a.farm.id));
+  revalidatePath(`/c/${a.farm.slug}`, "layout");
+  return { ok: "Guardado.", at: Date.now() };
 }
 
 export async function deleteExpenseAction(f: FormData) {

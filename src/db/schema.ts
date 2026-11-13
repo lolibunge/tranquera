@@ -118,6 +118,10 @@ export const farms = pgTable(
     colorPrimary: text("color_principal").notNull().default("#7a4a2a"),
     colorAccent: text("color_acento").notNull().default("#c9733d"),
     setupDoneAt: timestamp("asistente_completo", { withTimezone: true }),
+    /** Hay animales de otros dueños (pensión, haras, club, capitalización). */
+    hasBoarders: boolean("tiene_terceros").notNull().default(false),
+    /** Hay socios o pozo común. */
+    hasPartners: boolean("tiene_socios").notNull().default(false),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
   },
@@ -609,6 +613,11 @@ export const expenses = pgTable(
     amount: numeric("monto", { precision: 14, scale: 2 }).notNull(),
     currency: text("moneda").notNull().default("USD"),
     ownerId: uuid("propietario_id").references(() => owners.id, { onDelete: "set null" }),
+    /** Quién lo pagó de su bolsillo (vacío: la caja del campo). Queda como reintegro hasta que se devuelve. */
+    paidBy: text("pagado_por"),
+    reimbursedAt: timestamp("reintegrado", { withTimezone: true }),
+    /** Gastos repartidos entre animales: las partes de un mismo gasto comparten este id. */
+    splitId: uuid("reparto_id"),
     supplier: text("proveedor"),
     notes: text("notas"),
     createdBy: uuid("creado_por").references(() => users.id, { onDelete: "set null" }),
